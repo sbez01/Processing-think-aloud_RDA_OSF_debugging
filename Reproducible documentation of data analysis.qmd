@@ -1074,7 +1074,7 @@ Visualization
   scale_colour_manual(values = c("Noticing results" = "#481f70",
                                  "Comparing with personal perspective" = "#30688e",
                                  "Analyzing errors" = "#20a486",
-                                 "Constructing of instructional implications" = "#8fd744",
+                                 "Constructing instructional implications" = "#8fd744",
                                  "Think-aloud duration" = "darkgrey"),
                       breaks = c("Noticing results", "Comparing with personal perspective", "Analyzing errors", "Constructing instructional implications", "Think-aloud duration")) + 
   labs(title = "") + 
