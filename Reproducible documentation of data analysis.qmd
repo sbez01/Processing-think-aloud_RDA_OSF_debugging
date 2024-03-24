@@ -1,5 +1,5 @@
 ---
-title: "How do teachers make sense of technology-based formative assessments?"
+title: "How do teachers process technology-based formative assessment results in their daily practice? Results from process mining of think-aloud data"
 subtitle: "Reproducible documentation of data analysis"
 author: "First author, second author, last author"
 lang: eng
@@ -42,337 +42,10 @@ library(sjmisc)
 library(partitionComparison)
 ```
 
-# 0 Preprocessing
-
-@Samuel**:** **Dieser Teil betrifft das grundlegende data wrangling, also filtering nur offener TA, relevante Codings (z.B. die ganzen STrukturierungscodes, die man fürs Kodieren brauchte, rausnehmen) und Erstellung der eigentlichen Datengrundlage für das Paper. Da hier ziemlich viel passiert und hier auch viele Fehler und Unschärfen passieren können (und einige sicherlich auch passiert sind ;-)), habe ich das hier mit reingenommen. In die eigentliche RDA würde ich das aber nicht machen sondern die ginge mit dem nächsten Punkt Participants los und nutzt dann die gecleanten und stringent gelabelten data exports.**
-
-## 0.1 Event data frame main steps: filtering relevant codes, only open think-aloud
-
-```{r}
-eventdata_raw <- read_xlsx("data/MAXQDA 2018 Codings 3_fertig_Runde1.xlsx") # Konsens coding run 1: main steps, graph types etc
-```
-
-Round events to one second and filtering relevant codes
-
-```{r}
-eventdata_rounded <- eventdata_raw%>%
-    select(Dokumentgruppe, Dokumentname, Anfang, Ende, Code)%>%
-  filter(Dokumentgruppe == "Konsens")%>% # nur zur Sicherheit, dürften eh nur Konsense sein
-  mutate(Anfang_2 = str_sub(Anfang, -1),
-         Ende_2 = str_sub(Ende, -1))%>%
-    mutate(start_1 = ymd_hms(ymd("2000-01-01") + hms(Anfang)), # Datum arbiträr gewählt
-                 end_1 = ymd_hms(ymd("2000-01-01") + hms(Ende)), 
-                 turnID = 1:n(),
-                 code = Code)%>%
-  mutate(start = case_when(Anfang_2 > 4 ~ (ymd_hms(start_1) + seconds(1)), TRUE~ ymd_hms(start_1)))%>% # rundung des maxqda exports auf ganze Sekunden
-  mutate(end = case_when(Ende_2 > 4 ~ (ymd_hms(end_1) + seconds(1)), TRUE ~ ymd_hms(end_1)))%>% # rundung des maxqda exports auf ganze Sekunden
-  select(Dokumentname, code, turnID, start, end)%>%
-  filter(code %in% c("TA_O", # open think-aloud
-                     "RG", # rezeption grafik -> noticing data
-                     "AB", # ablgeich eigeneinschätzung -> comparing with personal perspective
-                     "FA", # fehleranalyse -> analyzing errors
-                     "HM", # handlungsmaßnahme -> constructing instructional implications
-                    "SU", # störung -> 
-                     "VLG", # Verlaufsgrafik -> graph type 1
-                     "KLG", # Klassengrafik -> graph type 2
-                     "AGG", # Aufgabengrafik -> graph type 3
-                     "KG", # Kompetenzgrafik -> graoh type 4
-                     "TG")) # Themengrafik -> graph type 5))
-  
-```
-
-Checking which teachers have more than one TA_O coding
-
-```{r}
-eventdata_rounded%>%
-  filter(code %in% c("TA_O"))%>%
-  group_by(Dokumentname)%>%
-  summarise(TA_O_count = n())%>%
-  filter(TA_O_count > 1)
-  
-```
-
-pid with 3 open think-aloud-parts
-
-```{r}
-ta_o_3_parts <- eventdata_rounded%>% 
-  filter(code %in% c("TA_O"))%>%
-  filter(Dokumentname %in% c("Andy", "Haroon"))%>% 
-  select(-code, -turnID)%>%
-  pivot_longer(!Dokumentname, names_to = "var", values_to = "val")%>%
-  group_by(Dokumentname)%>%
-  mutate(index = c(1, 1, 2, 2, 3, 3))%>%
-  ungroup()%>%
-  mutate(index_2 = str_c(.$var, sep = "_", .$index))%>%
-  select(Dokumentname, val, index_2)%>%
-  pivot_wider(., names_from = index_2, values_from = val)
-# so funktionierts, damit jetzt entsprechend filtern 
-# dann dasselbe mit den 2er Lp udn dann alles joinen
-
-eventdata_cleaned_3_ta <- 
-eventdata_rounded%>%
-  filter(Dokumentname %in% c("Andy", "Haroon"))%>%
-  filter(code %in% c("TA_O", "RG", "AB", "FA", "HM", "SU")) %>% 
-  left_join(., ta_o_3_parts, by = "Dokumentname")%>%
-  filter(start >= start_1 & end <= end_3)%>% # Schritt 1: Ränder. etwas doppelt zu Zeile drunter, aber trotzdem mal dringelassen
-  filter(start >= start_1 & end <= end_1 | start >= start_2 & end <= end_2 | start >= start_3 & end <= end_3)%>% # alles innerhalb von einem der ta_o codes, fällt genau 1 Zeile raus
-    mutate(start_shift = start - start_1,
-         end_shift = end - start_1)%>%
-  mutate(null_timestamp = ymd_hms("2000-01-01-00-00-00"), # nicht schön, aber selten. und funktional
-         start_shifted = null_timestamp + start_shift,
-         end_shifted = null_timestamp + end_shift)%>%
-    select(Dokumentname, turnID, code, start_shifted, end_shifted)
-
-
-```
-
-pid with 2 open think-aloud-parts
-
-```{r}
-ta_o_2_parts <- eventdata_rounded%>% 
-  filter(code %in% c("TA_O"))%>%
-  filter(Dokumentname %in% c("Clarence", "Rafel", "Viktoria"))%>% 
-  select(-code, -turnID)%>%
-  pivot_longer(!Dokumentname, names_to = "var", values_to = "val")%>%
-  group_by(Dokumentname)%>%
-  mutate(index = c(1, 1, 2, 2))%>%
-  ungroup()%>%
-  mutate(index_2 = str_c(.$var, sep = "_", .$index))%>%
-  select(Dokumentname, val, index_2)%>%
-  pivot_wider(., names_from = index_2, values_from = val)
-
-
-eventdata_cleaned_2_ta <- 
-eventdata_rounded%>%
-  filter(Dokumentname %in% c("Clarence", "Rafel", "Viktoria"))%>%
-  filter(code %in% c("TA_O", "RG", "AB", "FA", "HM", "SU")) %>% 
-  left_join(., ta_o_2_parts, by = "Dokumentname")%>%
-  filter(start >= start_1 & end <= end_2)%>% # Schritt 1: Ränder. etwas doppelt zu Zeile drunter, aber trotzdem mal dringelassen
-  filter(start >= start_1 & end <= end_1 | start >= start_2 & end <= end_2)%>% # alles innerhalb von einem der ta_o codes, fallen genau 2 Zeilen raus
-  mutate(start_shift = start - start_1,
-         end_shift = end - start_1)%>%
-  mutate(null_timestamp = ymd_hms("2000-01-01-00-00-00"), # nicht schön, aber selten. und funktional
-         start_shifted = null_timestamp + start_shift,
-         end_shifted = null_timestamp + end_shift)%>%
-    select(Dokumentname, turnID, code, start_shifted, end_shifted)
-  
-```
-
-taking everything together for cleaned event data, only open ta
-
-```{r}
-
-# df max_min with only one ta_o code for filtering 
-max_min_ta_o <- eventdata_rounded%>%
-  filter(!(Dokumentname %in% c("Haroon", "Andy", "Clarence", "Rafel", "Viktoria")))%>%
-  filter(code %in% c("TA_O"))%>%
-  rename(min_ta_o = start, max_ta_o = end)%>%
-  select(-code, -turnID)
- # group_by(Dokumentname)%>%
-  #summarize(max_ta_o = max(ymd_hms(end)),
-   #         min_ta_o = min(ymd_hms(start))
-
-
-eventdata_cleaned <- 
-eventdata_rounded%>%
-  filter(!(Dokumentname %in% c("Haroon", "Andy", "Clarence", "Rafel", "Viktoria")))%>%
-  filter(code %in% c("TA_O", "RG", "AB", "FA", "HM", "SU"))%>%
-  left_join(., max_min_ta_o, by = "Dokumentname")%>%
-  filter(end <= max_ta_o)%>%
-  filter(start >= min_ta_o)%>%
-  mutate(start_shift = start - min_ta_o,
-         end_shift = end - min_ta_o)%>%
-  mutate(null_timestamp = ymd_hms("2000-01-01-00-00-00"), # nicht schön, aber selten. und funktional
-         start_shifted = null_timestamp + start_shift,
-         end_shifted = null_timestamp + end_shift)%>%
-  select(Dokumentname, turnID, code, start_shifted, end_shifted)%>%
-  bind_rows(., eventdata_cleaned_2_ta)%>%
-  bind_rows(., eventdata_cleaned_3_ta)%>% # damit sequential plot machen
-  rename(start = start_shifted, 
-         end = end_shifted, 
-         pid = Dokumentname)%>%
-    mutate(code = case_when(code == "TA_O" ~ "think_aloud",
-                            code == "RG" ~ "noticing_results",
-                            code == "FA" ~ "analyzing_errors",
-                            code == "AB" ~ "comparing_perspective",
-                            code == "HM" ~ "constructing_implications",
-                            code == "SU" ~ "disturbance"))
-
-
-write.xlsx(eventdata_cleaned, "eventdata_sensemaking.xlsx")
-  
-```
-
-**Das wäre der df, den ich auf OSF stellen würde. Excel habe ich deswegen gewählt, weil bei csv das event data Format nicht funktioniert hat. Da hat es bei mir jeweils immer ein Z ergänzt, daher xlsx.**
-
-## 0.2 Event data graph types: filtering relevant codes
-
-**Samuel: Der Check, dass nur open ta_o in die Berechnung der relative durations reinkommt, mache ich hier später über den turn df aufgrund der Art und Weise, wie SU kodiert wurde. Das ist dafür das einfachere und validere.**
-
-```{r}
-eventdata_graphs <- eventdata_rounded%>%
-  filter(code %in% c("TA_O", "SU", "VLG", "KLG", "AGG", "KG", "TG"))%>%
-  mutate(code = case_when(code == "TA_O" ~"think_aloud", 
-                          code == "SU" ~ "disturbance", 
-                          code == "VLG" ~ "graphtype_1", 
-                          code == "KLG" ~ "graphtype_2", 
-                          code == "AGG" ~ "graphtype_3", 
-                          code == "KG" ~ "graphtype_4", 
-                          code == "TG" ~ "graphtype_5"))%>%
-  rename(pid = Dokumentname)
-
-write.xlsx(eventdata_graphs, "eventdata_graphs.xlsx")                
-  
-```
-
-## 0.3 Data frame for noticing specific aspects
-
-*Samuel: Das sind leider ziemlich viele Dateien durch das incomplete rating und eine komplizierte Organisation der MAXQDA-Dateien.*
-
-Importing different consensus data frames
-
-```{r}
-konsens_ns_sb <- read_excel("data/consenses binary codings noticing/Konsenskodierungen Nathalie und Sarah aus Nathalies MAXQDA datei.xlsx")%>%
-  select(Dokumentname, Code, Anfang, Ende)%>%
-    mutate(Anfang_2 = str_sub(Anfang, -1),
-         Ende_2 = str_sub(Ende, -1))%>%
-    mutate(start_1 = ymd_hms(ymd("2000-01-01") + hms(Anfang)), # Datum im Prinzip frei wählbar
-                 end_1 = ymd_hms(ymd("2000-01-01") + hms(Ende)), 
-                 turnID = 1:n(),
-                 code = Code)%>%
-  mutate(start = case_when(Anfang_2 > 4 ~ (ymd_hms(start_1) + seconds(1)), TRUE~ ymd_hms(start_1)))%>%
-  mutate(end = case_when(Ende_2 > 4 ~ (ymd_hms(end_1) + seconds(1)), TRUE ~ ymd_hms(end_1)))%>%
-  select(Dokumentname, code, turnID, start, end)
-
-konsens_ns_sp <- read_excel("data/consenses binary codings noticing/Konsenskodierung NS und SP aus MAXQDA Datei Simone_01.06.xlsx")%>%
-  select(Dokumentname, Code, Anfang, Ende)%>%
-    mutate(Anfang_2 = str_sub(Anfang, -1),
-         Ende_2 = str_sub(Ende, -1))%>%
-    mutate(start_1 = ymd_hms(ymd("2000-01-01") + hms(Anfang)), 
-                 end_1 = ymd_hms(ymd("2000-01-01") + hms(Ende)), 
-                 turnID = 1:n(),
-                 code = Code)%>%
-  mutate(start = case_when(Anfang_2 > 4 ~ (ymd_hms(start_1) + seconds(1)), TRUE~ ymd_hms(start_1)))%>%
-  mutate(end = case_when(Ende_2 > 4 ~ (ymd_hms(end_1) + seconds(1)), TRUE ~ ymd_hms(end_1)))%>%
-  select(Dokumentname, code, turnID, start, end)%>%
-  filter(Dokumentname != "Gustavo")
-
-konsens_gustavo <- read_excel("data/consenses binary codings noticing/Gustavo_angepasster Konsens mit neuem Code_MAXQDA DAtei Nathalie.xlsx")%>%
-  select(Dokumentname, Code, Anfang, Ende)%>%
-    mutate(Anfang_2 = str_sub(Anfang, -1),
-         Ende_2 = str_sub(Ende, -1))%>%
-    mutate(start_1 = ymd_hms(ymd("2000-01-01") + hms(Anfang)), 
-                 end_1 = ymd_hms(ymd("2000-01-01") + hms(Ende)), 
-                 turnID = 1:n(),
-                 code = Code)%>%
-  mutate(start = case_when(Anfang_2 > 4 ~ (ymd_hms(start_1) + seconds(1)), TRUE~ ymd_hms(start_1)))%>%
-  mutate(end = case_when(Ende_2 > 4 ~ (ymd_hms(end_1) + seconds(1)), TRUE ~ ymd_hms(end_1)))%>%
-  select(Dokumentname, code, turnID, start, end)
-
-konsens_ns_einzel <- read_excel("data/consenses binary codings noticing/individuelle Kodierungen Nathalie von incomplete Verfahren_MAXQDAdatei Nathalie.xlsx")%>%
-  select(Dokumentname, Code, Anfang, Ende)%>%
-    mutate(Anfang_2 = str_sub(Anfang, -1),
-         Ende_2 = str_sub(Ende, -1))%>%
-    mutate(start_1 = ymd_hms(ymd("2000-01-01") + hms(Anfang)), 
-                 end_1 = ymd_hms(ymd("2000-01-01") + hms(Ende)), 
-                 turnID = 1:n(),
-                 code = Code)%>%
-  mutate(start = case_when(Anfang_2 > 4 ~ (ymd_hms(start_1) + seconds(1)), TRUE~ ymd_hms(start_1)))%>%
-  mutate(end = case_when(Ende_2 > 4 ~ (ymd_hms(end_1) + seconds(1)), TRUE ~ ymd_hms(end_1)))%>%
-  select(Dokumentname, code, turnID, start, end)
-
-konsens_joey <- read_excel("data/consenses binary codings noticing/Joey_Konsens_MAXQDA Datei Nathalie.xlsx")%>%
-  select(Dokumentname, Code, Anfang, Ende)%>%
-    mutate(Anfang_2 = str_sub(Anfang, -1),
-         Ende_2 = str_sub(Ende, -1))%>%
-    mutate(start_1 = ymd_hms(ymd("2000-01-01") + hms(Anfang)), 
-                 end_1 = ymd_hms(ymd("2000-01-01") + hms(Ende)), 
-                 turnID = 1:n(),
-                 code = Code)%>%
-  mutate(start = case_when(Anfang_2 > 4 ~ (ymd_hms(start_1) + seconds(1)), TRUE~ ymd_hms(start_1)))%>%
-  mutate(end = case_when(Ende_2 > 4 ~ (ymd_hms(end_1) + seconds(1)), TRUE ~ ymd_hms(end_1)))%>%
-  select(Dokumentname, code, turnID, start, end)
-
-
-```
-
-Joining together
-
-```{r}
-data_noticing_event <- 
-konsens_ns_sb%>%
-  full_join(., konsens_ns_sp)%>%
-  full_join(., konsens_joey)%>%
-  full_join(., konsens_gustavo)%>%
-  full_join(., konsens_ns_einzel)
-  
-```
-
-Filtering and cleaning pids with 3 TA_O codes
-
-```{r}
-
-data_noticing_event_3_ta_o <- 
-data_noticing_event%>%
-  filter(Dokumentname == c("Andy", "Haroon"))%>%
-  left_join(., ta_o_3_parts)%>%
-  filter(start >= start_1 & end <= end_3)%>% # Schritt 1: Ränder. etwas doppelt zu Zeile drunter, aber trotzdem mal dringelassen
-  filter(start >= start_1 & end <= end_1 | start >= start_2 & end <= end_2 | start >= start_3 & end <= end_3) #alles innerhalb von einem der ta_o codes, fällt hier nichts raus 
-
-
-
-```
-
-Filtering and cleaning pids with 2 TA_O codes
-
-```{r}
-
-data_noticing_event_2_ta_o <- 
-data_noticing_event%>%
-  filter(Dokumentname == c("Rafel", "Viktoria"))%>% # Clarence fällt hier raus. Von Clarence gibt es leider keine Konsense, die ich als solche identifizieren konnte. Es ist unklar, ob es keine gibt oder als konsens nichts kodiert wurde, d.h. als missing gewertet und daher nicht drin.
-  left_join(., ta_o_2_parts, by = "Dokumentname")%>%
-  filter(start >= start_1 & end <= end_2)%>% # Schritt 1: Ränder. etwas doppelt zu Zeile drunter, aber trotzdem mal dringelassen
-  filter(start >= start_1 & end <= end_1 | start >= start_2 & end <= end_2) #alles innerhalb von einem der ta_o codes, fällt hier nichts raus 
-
-
-```
-
-Filtering and cleaning pids with 1 TA_O and joining
-
-```{r}
-
-data_noticing_aspects_cleaned <-
-data_noticing_event%>%
-  filter(!(Dokumentname %in% c("Haroon", "Andy", "Rafel", "Viktoria")))%>%
-  left_join(., max_min_ta_o)%>%
-  filter(end <= max_ta_o)%>%
-  filter(start >= min_ta_o)%>%
-  bind_rows(., data_noticing_event_2_ta_o)%>%
-  bind_rows(., data_noticing_event_3_ta_o)%>%
-  select(Dokumentname, code)%>%
-  unique()%>%
-  rename(pid = Dokumentname)%>%
-  mutate(code = case_when(code == "SB" ~ "assessment_finished",
-                            code == "PS" ~ "result_name", 
-                            code == "MW" ~ "mean", 
-                            code == "BG" ~ "best_group", 
-                            code == "MF" ~ "middle_group", 
-                            code == "SG" ~ "weakest_group", 
-                            code == "AR" ~ "outlier", 
-                            code == "BS" ~ "best_student", 
-                            code == "SS" ~ "weakest_student", 
-                            code == "SA" ~ "disperson_general", 
-                            code == "WB" ~ "range", 
-                            code == "SM" ~ "disperson_mean", 
-                            code == "ES" ~ "result_student"))
-
-write.xlsx(data_noticing_aspects_cleaned, "data_noticing_aspects.xlsx")
-```
-
 # Participants
 
 ```{r}
-demographics <- read_xlsx("data_demographics.xlsx")
+demographics <- read_xlsx("data/data_demographics.xlsx")
 ```
 
 **Age**
@@ -426,16 +99,16 @@ demographics%>%
 
 # Analyzing reliability of coding procedure
 
-**Samuel: Die ICR Werte hier beziehen sich auf das komplette Kodieren, also TA offen und TA nachfragen. Im Kodierprozess haben wir nicht nach TA offen und TA nachfragen bei der Entwicklung des Kategoriensystems und der Überprüfung der ICR differenziert. Ich habe es jetzt so gelassen (bisher), weil es mir so irgendwie plausibler und transparenter vorkam, da so der Prozess lief, und wir aufgrund der Werte dann auch in das incomplete Verfahren übergegangen sind usw. Ist aber dann nicht stringent zu dem, dass in der weiteren Analyse die Konsense aus TA offen verwendet werden. Was meinst Du dazu?**
-
-## Main process steps and graph types (coding run 1)
+## Main steps of processing and graph types (coding run 1)
 
 ```{r}
-codings_event_round1 <- read_excel("data/codings for reliability/codings_event_round1.xlsx")
+codings_event_run1 <- read_excel("data/codings for reliability/codings_event_run1.xlsx")
 ```
 
+Wrangling: from event to turn data
+
 ```{r}
-codings_turn_round1 <- codings_event_round1%>%
+codings_turn_run1 <- codings_event_run1%>%
       mutate(time = map2(start, end, seq, by = "1 sec"))%>%
   unnest(cols = time)%>%
   select(-start, -end, -turnID)%>%
@@ -451,14 +124,12 @@ codings_turn_round1 <- codings_event_round1%>%
 
 ### Main steps
 
-**Samuel: Hier aktuell noch die alten Bezeichnungen und Variablennamen. Werden noch geändert.**
-
-**dp: data perception**
+**nr: noticing results**
 
 ```{r}
-codings_turn_round1%>%
-  select(coder, pid, code_dp, time)%>%
-  spread(coder, code_dp)%>%
+codings_turn_run1%>%
+  select(coder, pid, code_nr, time)%>%
+  spread(coder, code_nr)%>%
   mutate(a = ifelse(is.na(a), 0, a),
          b = ifelse(is.na(b), 0, b))%>%
   select(a, b)%>%
@@ -467,13 +138,12 @@ codings_turn_round1%>%
 
 ```
 
-**ea: error analysis**
+**ae: analyzing errors**
 
 ```{r}
-
-codings_turn_round1%>%
-  select(coder, pid, code_ea, time)%>%
-  spread(coder, code_ea)%>%
+codings_turn_run1%>%
+  select(coder, pid, code_ae, time)%>%
+  spread(coder, code_ae)%>%
   mutate(a = ifelse(is.na(a), 0, a),
          b = ifelse(is.na(b), 0, b))%>%
   select(a, b)%>%
@@ -482,10 +152,10 @@ codings_turn_round1%>%
 
 ```
 
-**pp: comparison with personal perspective**
+**pp: comparing with personal perspective**
 
 ```{r}
-codings_turn_round1%>%
+codings_turn_run1%>%
   select(coder, pid, code_pp, time)%>%
   spread(coder, code_pp)%>%
   mutate(a = ifelse(is.na(a), 0, a),
@@ -496,10 +166,10 @@ codings_turn_round1%>%
 
 ```
 
-**ii: construction of instructional implications**
+**ii: constructing instructional implications**
 
 ```{r}
-codings_turn_round1%>%
+codings_turn_run1%>%
   select(coder, pid, code_ii, time)%>%
   spread(coder, code_ii)%>%
   mutate(a = ifelse(is.na(a), 0, a),
@@ -515,7 +185,7 @@ codings_turn_round1%>%
 **g1: graph type 1**
 
 ```{r}
-codings_turn_round1%>%
+codings_turn_run1%>%
   select(coder, pid, code_g1, time)%>%
   spread(coder, code_g1)%>%
   mutate(a = ifelse(is.na(a), 0, a),
@@ -528,7 +198,7 @@ codings_turn_round1%>%
 **g2: graph type 2**
 
 ```{r}
-codings_turn_round1%>%
+codings_turn_run1%>%
   select(coder, pid, code_g2, time)%>%
   spread(coder, code_g2)%>%
   mutate(a = ifelse(is.na(a), 0, a),
@@ -541,7 +211,7 @@ codings_turn_round1%>%
 **g3: graph type 3**
 
 ```{r}
-codings_turn_round1%>%
+codings_turn_run1%>%
   select(coder, pid, code_g3, time)%>%
   spread(coder, code_g3)%>%
   mutate(a = ifelse(is.na(a), 0, a),
@@ -554,7 +224,7 @@ codings_turn_round1%>%
 **g4: graph type 4**
 
 ```{r}
-codings_turn_round1%>%
+codings_turn_run1%>%
   select(coder, pid, code_g4, time)%>%
   spread(coder, code_g4)%>%
   mutate(a = ifelse(is.na(a), 0, a),
@@ -567,7 +237,7 @@ codings_turn_round1%>%
 **g5: graph type 5**
 
 ```{r}
-codings_turn_round1%>%
+codings_turn_run1%>%
   select(coder, pid, code_g5, time)%>%
   spread(coder, code_g5)%>%
   mutate(a = ifelse(is.na(a), 0, a),
@@ -579,298 +249,508 @@ codings_turn_round1%>%
 
 ## Noticing specific aspects (coding run 2)
 
+To calculate the intercoderreliability of coding run 2, we did not use Krippendorffs alpha. Several categories were coded very seldom (=low prevalence) and in these cases, the coefficient produced unplausible values. Therefore, we used Cohens kappa and if all raters or one rater coded 0 in one category for one teacher´s think-aloud, percentage of agreement was calculated because in these cases, Cohens kappa could not be calculated. For practical reasons, there were two different teams rated the videos (team 1: coder c and d, 6 Videos; team 2: coder d and 3, rest).
+
 ### Intercoderreliability of Coder c and d
 
-**Samuel: zur Frage warum hier nur % siehe Antwort auf Deinen Kommentar im Manuskript. code für cohens kappa ist hier bei as (assessment finished) und unten bei dispersion mean average (wo überall 0en sind) als beispiel mit drin. Wenn das Vorgehen klar ist, passe ich das entsprechend an.**
-
 ```{r}
-codings_round2_coder_c_d <- read_excel("data/codings for reliability/codings_binary_round2_coder_c_d.xlsx")
+codings_run2_coder_c_d <- read_excel("data/codings for reliability/codings_binary_run2_coder_c_d.xlsx")
 ```
 
 **as: assessment finished**
 
 ```{r}
-codings_round2_coder_c_d%>%
+codings_run2_coder_c_d%>%
   select(as_coder_c, as_coder_d)%>%
-  mutate(aggreement = ifelse(as_coder_c == as_coder_d, 1, 0))%>%
-  summarise(agreement_per = sum(aggreement)/6*100)
-
+  mutate(agreement = ifelse(as_coder_c == as_coder_d, 1, 0))%>%
+  summarise(agreement_per = sum(agreement)/6*100)
 ```
 
-Cohens kappa
-
 ```{r}
-test_as <- codings_round2_coder_c_d%>%
+as_coder_c_d <- codings_run2_coder_c_d%>%
   select(as_coder_c, as_coder_d)
 
-kreuztab_as <- xtabs (~ test_as$as_coder_c + test_as$as_coder_d)
+xtab_as_cd <- xtabs (~ as_coder_c_d$as_coder_c + as_coder_c_d$as_coder_d)
   
-CohenKappa(kreuztab_as)
-
+CohenKappa(xtab_as_cd)
 ```
 
 **rn: match individual result to student name**
 
 ```{r}
-codings_round2_coder_c_d%>%
+codings_run2_coder_c_d%>%
   select(rn_coder_c, rn_coder_d)%>%
-  mutate(aggreement = ifelse(rn_coder_c == rn_coder_d, 1, 0))%>%
-  summarise(agreement_per = sum(aggreement)/6*100)
+  mutate(agreement = ifelse(rn_coder_c == rn_coder_d, 1, 0))%>%
+  summarise(agreement_per = sum(agreement)/6*100)
+```
+
+```{r}
+rn_coder_c_d <- codings_run2_coder_c_d%>%
+  select(rn_coder_c, rn_coder_d)
+
+xtab_rn_cd <- xtabs (~ rn_coder_c_d$rn_coder_c + rn_coder_c_d$rn_coder_d)
+  
+CohenKappa(xtab_rn_cd)
 ```
 
 **me: mean**
 
 ```{r}
-codings_round2_coder_c_d%>%
+codings_run2_coder_c_d%>%
   select(me_coder_c, me_coder_d)%>%
-  mutate(aggreement = ifelse(me_coder_c == me_coder_d, 1, 0))%>%
-  summarise(agreement_per = sum(aggreement)/6*100)
+  mutate(agreement = ifelse(me_coder_c == me_coder_d, 1, 0))%>%
+  summarise(agreement_per = sum(agreement)/6*100)
+```
+
+```{r}
+me_coder_c_d <- codings_run2_coder_c_d%>%
+  select(me_coder_c, me_coder_d)
+
+xtab_me_cd <- xtabs (~ me_coder_c_d$me_coder_c + me_coder_c_d$me_coder_d)
+  
+CohenKappa(xtab_me_cd)
 ```
 
 **bg: best group**
 
 ```{r}
-codings_round2_coder_c_d%>%
+codings_run2_coder_c_d%>%
   select(bg_coder_c, bg_coder_d)%>%
-  mutate(aggreement = ifelse(bg_coder_c == bg_coder_d, 1, 0))%>%
-  summarise(agreement_per = sum(aggreement)/6*100)
+  mutate(agreement = ifelse(bg_coder_c == bg_coder_d, 1, 0))%>%
+  summarise(agreement_per = sum(agreement)/6*100)
+```
+
+```{r}
+bg_coder_c_d <- codings_run2_coder_c_d%>%
+  select(bg_coder_c, bg_coder_d)
+
+xtab_bg_cd <- xtabs (~ bg_coder_c_d$bg_coder_c + bg_coder_c_d$bg_coder_d)
+  
+CohenKappa(xtab_bg_cd)
 ```
 
 **mg: middle group**
 
 ```{r}
-codings_round2_coder_c_d%>%
+codings_run2_coder_c_d%>%
   select(mg_coder_c, mg_coder_d)%>%
-  mutate(aggreement = ifelse(mg_coder_c == mg_coder_d, 1, 0))%>%
-  summarise(agreement_per = sum(aggreement)/6*100)
+  mutate(agreement = ifelse(mg_coder_c == mg_coder_d, 1, 0))%>%
+  summarise(agreement_per = sum(agreement)/6*100)
+```
+
+```{r}
+mg_coder_c_d <- codings_run2_coder_c_d%>%
+  select(mg_coder_c, mg_coder_d)
+
+xtab_mg_cd <- xtabs (~ mg_coder_c_d$mg_coder_c + mg_coder_c_d$mg_coder_d)
+  
+#CohenKappa(xtab_mg_cd)
 ```
 
 **wg: weakest group**
 
 ```{r}
-codings_round2_coder_c_d%>%
+codings_run2_coder_c_d%>%
   select(wg_coder_c, wg_coder_d)%>%
-  mutate(aggreement = ifelse(wg_coder_c == wg_coder_d, 1, 0))%>%
-  summarise(agreement_per = sum(aggreement)/6*100)
+  mutate(agreement = ifelse(wg_coder_c == wg_coder_d, 1, 0))%>%
+  summarise(agreement_per = sum(agreement)/6*100)
+```
+
+```{r}
+wg_coder_c_d <- codings_run2_coder_c_d%>%
+  select(wg_coder_c, wg_coder_d)
+
+xtab_wg_cd <- xtabs (~ wg_coder_c_d$wg_coder_c + wg_coder_c_d$wg_coder_d)
+  
+CohenKappa(xtab_wg_cd)
 ```
 
 **ou: outlier**
 
 ```{r}
-codings_round2_coder_c_d%>%
+codings_run2_coder_c_d%>%
   select(ou_coder_c, ou_coder_d)%>%
-  mutate(aggreement = ifelse(ou_coder_c == ou_coder_d, 1, 0))%>%
-  summarise(agreement_per = sum(aggreement)/6*100)
+  mutate(agreement = ifelse(ou_coder_c == ou_coder_d, 1, 0))%>%
+  summarise(agreement_per = sum(agreement)/6*100)
+```
+
+```{r}
+ou_coder_c_d <- codings_run2_coder_c_d%>%
+  select(ou_coder_c, ou_coder_d)
+
+xtab_ou_cd <- xtabs (~ ou_coder_c_d$ou_coder_c + ou_coder_c_d$ou_coder_d)
+  
+#CohenKappa(xtab_ou_cd)
 ```
 
 **bs: best student**
 
 ```{r}
-codings_round2_coder_c_d%>%
+codings_run2_coder_c_d%>%
   select(bs_coder_c, bs_coder_d)%>%
-  mutate(aggreement = ifelse(bs_coder_c == bs_coder_d, 1, 0))%>%
-  summarise(agreement_per = sum(aggreement)/6*100)
+  mutate(agreement = ifelse(bs_coder_c == bs_coder_d, 1, 0))%>%
+  summarise(agreement_per = sum(agreement)/6*100)
+```
+
+```{r}
+bs_coder_c_d <- codings_run2_coder_c_d%>%
+  select(bs_coder_c, bs_coder_d)
+
+xtab_bs_cd <- xtabs (~ bs_coder_c_d$bs_coder_c + bs_coder_c_d$bs_coder_d)
+  
+CohenKappa(xtab_bs_cd)
 ```
 
 **ws: weakest student**
 
 ```{r}
-codings_round2_coder_c_d%>%
+codings_run2_coder_c_d%>%
   select(ws_coder_c, ws_coder_d)%>%
-  mutate(aggreement = ifelse(ws_coder_c == ws_coder_d, 1, 0))%>%
-  summarise(agreement_per = sum(aggreement)/6*100)
+  mutate(agreement = ifelse(ws_coder_c == ws_coder_d, 1, 0))%>%
+  summarise(agreement_per = sum(agreement)/6*100)
+```
+
+```{r}
+ws_coder_c_d <- codings_run2_coder_c_d%>%
+  select(ws_coder_c, ws_coder_d)
+
+xtab_ws_cd <- xtabs (~ ws_coder_c_d$ws_coder_c + ws_coder_c_d$ws_coder_d)
+  
+CohenKappa(xtab_ws_cd)
 ```
 
 **dg: dispersion general**
 
 ```{r}
-codings_round2_coder_c_d%>%
+codings_run2_coder_c_d%>%
   select(dg_coder_c, dg_coder_d)%>%
-  mutate(aggreement = ifelse(dg_coder_c == dg_coder_d, 1, 0))%>%
-  summarise(agreement_per = sum(aggreement)/6*100)
+  mutate(agreement = ifelse(dg_coder_c == dg_coder_d, 1, 0))%>%
+  summarise(agreement_per = sum(agreement)/6*100)
+```
+
+```{r}
+dg_coder_c_d <- codings_run2_coder_c_d%>%
+  select(dg_coder_c, dg_coder_d)
+
+xtab_dg_cd <- xtabs (~ dg_coder_c_d$dg_coder_c + dg_coder_c_d$dg_coder_d)
+  
+CohenKappa(xtab_dg_cd)
 ```
 
 **ra: range**
 
 ```{r}
-codings_round2_coder_c_d%>%
+codings_run2_coder_c_d%>%
   select(ra_coder_c, ra_coder_d)%>%
-  mutate(aggreement = ifelse(ra_coder_c == ra_coder_d, 1, 0))%>%
-  summarise(agreement_per = sum(aggreement)/6*100)
+  mutate(agreement = ifelse(ra_coder_c == ra_coder_d, 1, 0))%>%
+  summarise(agreement_per = sum(agreement)/6*100)
+```
+
+```{r}
+ra_coder_c_d <- codings_run2_coder_c_d%>%
+  select(ra_coder_c, ra_coder_d)
+
+xtab_ra_cd <- xtabs (~ ra_coder_c_d$ra_coder_c + ra_coder_c_d$ra_coder_d)
+  
+CohenKappa(xtab_ra_cd)
 ```
 
 **dm: dispersion mean average**
 
 ```{r}
-codings_round2_coder_c_d%>%
+codings_run2_coder_c_d%>%
   select(dm_coder_c, dm_coder_d)%>%
-  mutate(aggreement = ifelse(dm_coder_c == dm_coder_d, 1, 0))%>%
-  summarise(agreement_per = sum(aggreement)/6*100)
+  mutate(agreement = ifelse(dm_coder_c == dm_coder_d, 1, 0))%>%
+  summarise(agreement_per = sum(agreement)/6*100)
 
 ```
 
-Cohens kappa -\> funktioniert hier nicht weil überall 0
-
 ```{r}
-test_dm <- codings_round2_coder_c_d%>%
+dm_coder_c_d <- codings_run2_coder_c_d%>%
   select(dm_coder_c, dm_coder_d)
 
-kreuztab_dm <- xtabs (~ test_dm$dm_coder_c + test_dm$dm_coder_d)
+xtab_dm_cd <- xtabs (~ dm_coder_c_d$dm_coder_c + dm_coder_c_d$dm_coder_d)
   
-CohenKappa(kreuztab_dm)
+CohenKappa(xtab_dm_cd)
 ```
 
 **rs: result individual student**
 
 ```{r}
-codings_round2_coder_c_d%>%
+codings_run2_coder_c_d%>%
   select(rs_coder_c, rs_coder_d)%>%
-  mutate(aggreement = ifelse(rs_coder_c == rs_coder_d, 1, 0))%>%
-  summarise(agreement_per = sum(aggreement)/6*100)
+  mutate(agreement = ifelse(rs_coder_c == rs_coder_d, 1, 0))%>%
+  summarise(agreement_per = sum(agreement)/6*100)
+```
+
+```{r}
+rs_coder_c_d <- codings_run2_coder_c_d%>%
+  select(rs_coder_c, rs_coder_d)
+
+xtab_rs_cd <- xtabs (~ rs_coder_c_d$rs_coder_c + rs_coder_c_d$rs_coder_d)
+  
+CohenKappa(xtab_rs_cd)
 ```
 
 ### Intercoderreliability of coder d and e
 
 ```{r}
-codings_round2_coder_d_e <- read_excel("data/codings for reliability/codings_binary_round2_coder_d_e.xlsx")
+codings_run2_coder_d_e <- read_excel("data/codings for reliability/codings_binary_run2_coder_d_e.xlsx")
 ```
 
 **as: assessment finished**
 
 ```{r}
-codings_round2_coder_d_e%>%
+codings_run2_coder_d_e%>%
   select(as_coder_d, as_coder_e)%>%
-  mutate(aggreement = ifelse(as_coder_d == as_coder_e, 1, 0))%>%
-  summarise(agreement_per = sum(aggreement)/21*100)
+  mutate(agreement = ifelse(as_coder_d == as_coder_e, 1, 0))%>%
+  summarise(agreement_per = sum(agreement)/21*100)
 
+```
+
+```{r}
+as_coder_d_e <- codings_run2_coder_d_e%>%
+  select(as_coder_d, as_coder_e)
+
+xtab_as_de <- xtabs (~ as_coder_d_e$as_coder_d + as_coder_d_e$as_coder_e)
+  
+CohenKappa(xtab_as_de)
 ```
 
 **rn: match individual result to student name**
 
 ```{r}
-codings_round2_coder_d_e%>%
+codings_run2_coder_d_e%>%
   select(rn_coder_d, rn_coder_e)%>%
-  mutate(aggreement = ifelse(rn_coder_d == rn_coder_e, 1, 0))%>%
-  summarise(agreement_per = sum(aggreement)/21*100)
+  mutate(agreement = ifelse(rn_coder_d == rn_coder_e, 1, 0))%>%
+  summarise(agreement_per = sum(agreement)/21*100)
+```
+
+```{r}
+rn_coder_d_e <- codings_run2_coder_d_e%>%
+  select(rn_coder_d, rn_coder_e)
+
+xtab_rn_de <- xtabs (~ rn_coder_d_e$rn_coder_d + rn_coder_d_e$rn_coder_e)
+  
+CohenKappa(xtab_rn_de)
 ```
 
 **me: mean**
 
 ```{r}
-codings_round2_coder_d_e%>%
+codings_run2_coder_d_e%>%
   select(me_coder_d, me_coder_e)%>%
-  mutate(aggreement = ifelse(me_coder_d == me_coder_e, 1, 0))%>%
-  summarise(agreement_per = sum(aggreement)/21*100)
+  mutate(agreement = ifelse(me_coder_d == me_coder_e, 1, 0))%>%
+  summarise(agreement_per = sum(agreement)/21*100)
+```
+
+```{r}
+me_coder_d_e <- codings_run2_coder_d_e%>%
+  select(me_coder_d, me_coder_e)
+
+xtab_me_de <- xtabs (~ me_coder_d_e$me_coder_d + me_coder_d_e$me_coder_e)
+  
+CohenKappa(xtab_me_de)
 ```
 
 **bg: best group**
 
 ```{r}
-codings_round2_coder_d_e%>%
+codings_run2_coder_d_e%>%
   select(bg_coder_d, bg_coder_e)%>%
-  mutate(aggreement = ifelse(bg_coder_d == bg_coder_e, 1, 0))%>%
-  summarise(agreement_per = sum(aggreement)/21*100)
+  mutate(agreement = ifelse(bg_coder_d == bg_coder_e, 1, 0))%>%
+  summarise(agreement_per = sum(agreement)/21*100)
+```
+
+```{r}
+bg_coder_d_e <- codings_run2_coder_d_e%>%
+  select(bg_coder_d, bg_coder_e)
+
+xtab_bg_de <- xtabs (~ bg_coder_d_e$bg_coder_d + bg_coder_d_e$bg_coder_e)
+  
+CohenKappa(xtab_bg_de)
 ```
 
 **mg: middle group**
 
 ```{r}
-codings_round2_coder_d_e%>%
+codings_run2_coder_d_e%>%
   select(mg_coder_d, mg_coder_e)%>%
-  mutate(aggreement = ifelse(mg_coder_d == mg_coder_e, 1, 0))%>%
-  summarise(agreement_per = sum(aggreement)/21*100)
+  mutate(agreement = ifelse(mg_coder_d == mg_coder_e, 1, 0))%>%
+  summarise(agreement_per = sum(agreement)/21*100)
+```
+
+```{r}
+mg_coder_d_e <- codings_run2_coder_d_e%>%
+  select(mg_coder_d, mg_coder_e)
+
+xtab_mg_de <- xtabs (~ mg_coder_d_e$mg_coder_d + mg_coder_d_e$mg_coder_e)
+  
+CohenKappa(xtab_mg_de)
 ```
 
 **wg: weakest group**
 
 ```{r}
-codings_round2_coder_d_e%>%
+codings_run2_coder_d_e%>%
   select(wg_coder_d, wg_coder_e)%>%
-  mutate(aggreement = ifelse(wg_coder_d == wg_coder_e, 1, 0))%>%
-  summarise(agreement_per = sum(aggreement)/21*100)
+  mutate(agreement = ifelse(wg_coder_d == wg_coder_e, 1, 0))%>%
+  summarise(agreement_per = sum(agreement)/21*100)
+```
+
+```{r}
+wg_coder_d_e <- codings_run2_coder_d_e%>%
+  select(wg_coder_d, wg_coder_e)
+
+xtab_wg_de <- xtabs (~ wg_coder_d_e$wg_coder_d + wg_coder_d_e$wg_coder_e)
+  
+CohenKappa(xtab_wg_de)
 ```
 
 **ou: outlier**
 
 ```{r}
-codings_round2_coder_d_e%>%
+codings_run2_coder_d_e%>%
   select(ou_coder_d, ou_coder_e)%>%
-  mutate(aggreement = ifelse(ou_coder_d == ou_coder_e, 1, 0))%>%
-  summarise(agreement_per = sum(aggreement)/21*100)
+  mutate(agreement = ifelse(ou_coder_d == ou_coder_e, 1, 0))%>%
+  summarise(agreement_per = sum(agreement)/21*100)
+```
+
+```{r}
+ou_coder_d_e <- codings_run2_coder_d_e%>%
+  select(ou_coder_d, ou_coder_e)
+
+xtab_ou_de <- xtabs (~ ou_coder_d_e$ou_coder_d + ou_coder_d_e$ou_coder_e)
+  
+CohenKappa(xtab_ou_de)
 ```
 
 **bs: best student**
 
 ```{r}
-codings_round2_coder_d_e%>%
+codings_run2_coder_d_e%>%
   select(bs_coder_d, bs_coder_e)%>%
-  mutate(aggreement = ifelse(bs_coder_d == bs_coder_e, 1, 0))%>%
-  summarise(agreement_per = sum(aggreement)/21*100)
+  mutate(agreement = ifelse(bs_coder_d == bs_coder_e, 1, 0))%>%
+  summarise(agreement_per = sum(agreement)/21*100)
+```
+
+```{r}
+bs_coder_d_e <- codings_run2_coder_d_e%>%
+  select(bs_coder_d, bs_coder_e)
+
+xtab_bs_de <- xtabs (~ bs_coder_d_e$bs_coder_d + bs_coder_d_e$bs_coder_e)
+  
+CohenKappa(xtab_bs_de)
 ```
 
 **ws: weakest student**
 
 ```{r}
-codings_round2_coder_d_e%>%
+codings_run2_coder_d_e%>%
   select(ws_coder_d, ws_coder_e)%>%
-  mutate(aggreement = ifelse(ws_coder_d == ws_coder_e, 1, 0))%>%
-  summarise(agreement_per = sum(aggreement)/21*100)
+  mutate(agreement = ifelse(ws_coder_d == ws_coder_e, 1, 0))%>%
+  summarise(agreement_per = sum(agreement)/21*100)
+```
+
+```{r}
+ws_coder_d_e <- codings_run2_coder_d_e%>%
+  select(ws_coder_d, ws_coder_e)
+
+xtab_ws_de <- xtabs (~ ws_coder_d_e$ws_coder_d + ws_coder_d_e$ws_coder_e)
+  
+CohenKappa(xtab_ws_de)
 ```
 
 **dg: dispersion general**
 
 ```{r}
-codings_round2_coder_d_e%>%
+codings_run2_coder_d_e%>%
   select(dg_coder_d, dg_coder_e)%>%
-  mutate(aggreement = ifelse(dg_coder_d == dg_coder_e, 1, 0))%>%
-  summarise(agreement_per = sum(aggreement)/21*100)
+  mutate(agreement = ifelse(dg_coder_d == dg_coder_e, 1, 0))%>%
+  summarise(agreement_per = sum(agreement)/21*100)
+```
+
+```{r}
+dg_coder_d_e <- codings_run2_coder_d_e%>%
+  select(dg_coder_d, dg_coder_e)
+
+xtab_dg_de <- xtabs (~ dg_coder_d_e$dg_coder_d + dg_coder_d_e$dg_coder_e)
+  
+CohenKappa(xtab_dg_de)
 ```
 
 **ra: range**
 
 ```{r}
-codings_round2_coder_d_e%>%
+codings_run2_coder_d_e%>%
   select(ra_coder_d, ra_coder_e)%>%
-  mutate(aggreement = ifelse(ra_coder_d == ra_coder_e, 1, 0))%>%
-  summarise(agreement_per = sum(aggreement)/21*100)
+  mutate(agreement = ifelse(ra_coder_d == ra_coder_e, 1, 0))%>%
+  summarise(agreement_per = sum(agreement)/21*100)
+```
+
+```{r}
+ra_coder_d_e <- codings_run2_coder_d_e%>%
+  select(ra_coder_d, ra_coder_e)
+
+xtab_ra_de <- xtabs (~ ra_coder_d_e$ra_coder_d + ra_coder_d_e$ra_coder_e)
+  
+CohenKappa(xtab_ra_de)
 ```
 
 **dm: dispersion mean average**
 
 ```{r}
-codings_round2_coder_d_e%>%
+codings_run2_coder_d_e%>%
   select(dm_coder_d, dm_coder_e)%>%
-  mutate(aggreement = ifelse(dm_coder_d == dm_coder_e, 1, 0))%>%
-  summarise(agreement_per = sum(aggreement)/21*100)
+  mutate(agreement = ifelse(dm_coder_d == dm_coder_e, 1, 0))%>%
+  summarise(agreement_per = sum(agreement)/21*100)
+```
+
+```{r}
+dm_coder_d_e <- codings_run2_coder_d_e%>%
+  select(dm_coder_d, dm_coder_e)
+
+xtab_dm_de <- xtabs (~ dm_coder_d_e$dm_coder_d + dm_coder_d_e$dm_coder_e)
+  
+CohenKappa(xtab_dm_de)
 ```
 
 **rs: result individual student**
 
 ```{r}
-codings_round2_coder_d_e%>%
+codings_run2_coder_d_e%>%
   select(rs_coder_d, rs_coder_e)%>%
-  mutate(aggreement = ifelse(rs_coder_d == rs_coder_e, 1, 0))%>%
-  summarise(agreement_per = sum(aggreement)/21*100)
+  mutate(agreement = ifelse(rs_coder_d == rs_coder_e, 1, 0))%>%
+  summarise(agreement_per = sum(agreement)/21*100)
+```
+
+```{r}
+rn_coder_d_e <- codings_run2_coder_d_e%>%
+  select(rn_coder_d, rn_coder_e)
+
+xtab_rn_de <- xtabs (~ rn_coder_d_e$rn_coder_d + rn_coder_d_e$rn_coder_e)
+  
+CohenKappa(xtab_rn_de)
 ```
 
 ## Consensus codings
 
-Main steps of sensemaking
+Main steps of processing
 
 ```{r}
-eventdata_sensemaking <- read_excel("eventdata_sensemaking.xlsx")
+eventdata_processing <- read_excel("data/eventdata_processing.xlsx")
 
 ```
 
 Binary codings of noticing specific aspects
 
 ```{r}
-data_aspects <- read_excel("data_noticing_aspects.xlsx")
+data_aspects <- read_excel("data/data_noticing_aspects.xlsx")
 ```
 
 # Results
 
-## Research Question 1: Sensemaking in general (descriptive analysis and visualization)
+## Research Question 1: Processing in general (descriptive analysis and visualization)
 
 ### Relative durations of main steps
 
@@ -878,8 +758,8 @@ Wrangling: from event data to turn
 
 ```{r}
 
-turndata_sensemaking <- 
-eventdata_sensemaking%>%
+turndata_processing <- 
+eventdata_processing%>%
   mutate(time = map2(start, end, seq, by = "1 sec"))%>%
   unnest(cols = time)%>%
   select(-start, -end, -turnID)%>%
@@ -896,9 +776,9 @@ Calculating relative durations of main steps
 
 ```{r}
 
-sensemaking_duration <- 
-turndata_sensemaking%>%
-  mutate(noticing_results = ifelse(code_noticing_results == 1 & code_disturbance == 0, 1, 0), # eigentlich ist so kodiert, dass kein main steps code und disturbance gleichzeitig vergeben wurden (nur Grafiiken wurden durchkodiert). Daher braucht man eigentlich nur bei think-aloud und bei relativen Anteilen von Grafiken die entsprechende Bedingung. Habs jetzt trotzdem mal so gemacht.
+processing_duration <- 
+turndata_processing%>%
+  mutate(noticing_results = ifelse(code_noticing_results == 1 & code_disturbance == 0, 1, 0), 
          comparing_perspective = ifelse(code_comparing_perspective == 1 & code_disturbance == 0, 1, 0),
          analyzing_errors = ifelse(code_analyzing_errors == 1 & code_disturbance == 0, 1, 0), 
          constructing_implications = ifelse(code_constructing_implications == 1 & code_disturbance == 0, 1, 0),
@@ -917,13 +797,13 @@ turndata_sensemaking%>%
 
 ```
 
-Visualizing relative durations of main steps
+Visualizing relative durations of main steps for each teacher
 
 ```{r}
 
-sensemaking_duration%>%
+processing_duration%>%
   ggplot(
-    aes(x = factor(var, level = c("constucting_implications_durationg", "analyzing_errors_duration", "comparing_perspective_duration", "constructing_implications_duration")), 
+    aes(x = factor(var, level = c("constructing_implications_duration", "analyzing_errors_duration", "comparing_perspective_duration", "noticing_results_duration")), 
     y = val, fill = var)) + 
   stat_halfeye(adjust = 0.5, 
                        width = 0.5, 
@@ -954,13 +834,6 @@ sensemaking_duration%>%
                            "comparing_perspective_duration" ="#30688e",
                            "analyzing_errors_duration"= "#20a486", 
                            "constructing_implications_duration" = "#8fd744")) +
-  #stat_summary(
-   # geom = "text",
-    #fun = "median",
-    #aes(label = round(..y.., 1), color = var),
-    #fontface = "bold",
-    #size = 6,
-    #vjust = - 3.8) + # Zahl kleiner für "nach unten" # Samuel: median ist hier rausgenommen, weil es mir hier eher um die Verteilung geht. Außerdem ist er ja durch die boxplots drin...
   coord_flip() +
   ggtitle("") +
     theme_minimal() + 
@@ -1010,17 +883,17 @@ data_aspects%>%
         axis.text.x = element_text(angle = 40, vjust = 1, hjust=1))
 
 
-ggsave("Figure 2_Noticing specific aspects.png", plot = last_plot(), device = "png", units = c("cm"), width = 33, height = 20)
+ggsave("Figure 2_Percentage of teachers who noticed specific aspects.png", plot = last_plot(), device = "png", units = c("cm"), width = 33, height = 20)
 
 ```
 
-### Visualizing sequences (codings) per teacher
+### Visualizing sequences of main steps (codings) per teacher
 
 Wrangling
 
 ```{r}
-eventdata_sensemaking_sequences <- 
-eventdata_sensemaking%>%
+eventdata_processing_sequences <- 
+eventdata_processing%>%
   filter(code != "disturbance")%>%
   mutate(start_p = start, 
          end_p = end, 
@@ -1048,24 +921,24 @@ eventdata_sensemaking%>%
 Visualization
 
 ```{r}
-  ggplot(eventdata_sensemaking_sequences, aes(y = code_ungrouped)) + 
-  geom_segment(data = eventdata_sensemaking_sequences %>%
+  ggplot(eventdata_processing_sequences, aes(y = code_ungrouped)) + 
+  geom_segment(data = eventdata_processing_sequences %>%
                  filter(code_ungrouped == "Think-aloud duration")%>%
                  mutate("Think-aloud duration" = code_legend),
                aes(x = start_p, xend = end_p, yend = code_ungrouped, color = "Think-aloud duration"), lineend = "butt", linewidth = 4) +
-  geom_segment(data = eventdata_sensemaking_sequences %>%
+  geom_segment(data = eventdata_processing_sequences %>%
                  filter(code_ungrouped == "Noticing results")%>%
                  mutate("Noticing results" = code_legend),
                aes(x = start_p, xend = end_p, yend = code_ungrouped, color = "Noticing results"), lineend = "butt", linewidth = 4) +
-  geom_segment(data = eventdata_sensemaking_sequences %>%
+  geom_segment(data = eventdata_processing_sequences %>%
                filter(code_ungrouped == "Comparing with personal perspective")%>%
                mutate("Comparing with personal perspective" = code_legend),
              aes(x = start_p, xend = end_p, yend = code_ungrouped, color = "Comparing with personal perspective"), lineend = "butt", linewidth = 4) +
-  geom_segment(data = eventdata_sensemaking_sequences %>%
+  geom_segment(data = eventdata_processing_sequences %>%
                filter(code_ungrouped == "Analyzing errors")%>%
                mutate("Analyzing errors" = code_legend),
              aes(x = start_p, xend = end_p, yend = code_ungrouped, color = "Analyzing errors"), lineend = "butt", linewidth = 4) +
-  geom_segment(data = eventdata_sensemaking_sequences %>%
+  geom_segment(data = eventdata_processing_sequences %>%
                filter(code_ungrouped == "Constructing instructional implications")%>%
                mutate("Constructing instructional implications" = code_legend),
              aes(x = start_p, xend = end_p, yend = code_ungrouped, color = "Constructing instructional implications"), lineend = "butt", linewidth = 4) +
@@ -1091,14 +964,65 @@ Visualization
    scale_fill_discrete(breaks = c("Noticing results", "Comparing with personal perspective", "Analyzing errors", "Constructing instructional implications", "Think-aloud duration")) 
 
 
-ggsave("Figure 3_Sensemaking sequences per teacher.png", plot = last_plot(), device = "png", units = c("cm"), width = 34, height = 48, dpi = 600)
+ggsave("Figure 3_Sequences of main steps per teacher_portrait.png", plot = last_plot(), device = "png", units = c("cm"), width = 34, height = 48, dpi = 300)
+
+```
+
+Landscape
+
+```{r}
+  ggplot(eventdata_processing_sequences, aes(y = code_ungrouped)) + 
+  geom_segment(data = eventdata_processing_sequences %>%
+                 filter(code_ungrouped == "Think-aloud duration")%>%
+                 mutate("Think-aloud duration" = code_legend),
+               aes(x = start_p, xend = end_p, yend = code_ungrouped, color = "Think-aloud duration"), lineend = "butt", linewidth = 4) +
+  geom_segment(data = eventdata_processing_sequences %>%
+                 filter(code_ungrouped == "Noticing results")%>%
+                 mutate("Noticing results" = code_legend),
+               aes(x = start_p, xend = end_p, yend = code_ungrouped, color = "Noticing results"), lineend = "butt", linewidth = 4) +
+  geom_segment(data = eventdata_processing_sequences %>%
+               filter(code_ungrouped == "Comparing with personal perspective")%>%
+               mutate("Comparing with personal perspective" = code_legend),
+             aes(x = start_p, xend = end_p, yend = code_ungrouped, color = "Comparing with personal perspective"), lineend = "butt", linewidth = 4) +
+  geom_segment(data = eventdata_processing_sequences %>%
+               filter(code_ungrouped == "Analyzing errors")%>%
+               mutate("Analyzing errors" = code_legend),
+             aes(x = start_p, xend = end_p, yend = code_ungrouped, color = "Analyzing errors"), lineend = "butt", linewidth = 4) +
+  geom_segment(data = eventdata_processing_sequences %>%
+               filter(code_ungrouped == "Constructing instructional implications")%>%
+               mutate("Constructing instructional implications" = code_legend),
+             aes(x = start_p, xend = end_p, yend = code_ungrouped, color = "Constructing instructional implications"), lineend = "butt", linewidth = 4) +
+  guides(color=guide_legend(title="Main steps")) + 
+ facet_wrap(~`pid`, ncol = 4) + 
+  scale_colour_manual(values = c("Noticing results" = "#481f70",
+                                 "Comparing with personal perspective" = "#30688e",
+                                 "Analyzing errors" = "#20a486",
+                                 "Constructing instructional implications" = "#8fd744",
+                                 "Think-aloud duration" = "darkgrey"),
+                      breaks = c("Noticing results", "Comparing with personal perspective", "Analyzing errors", "Constructing instructional implications", "Think-aloud duration")) + 
+  labs(title = "") + 
+  scale_y_discrete(limits = c("Think-aloud duration", "Constructing instructional implications", "Analyzing errors", "Comparing with personal perspective", "Noticing results")) +
+  xlab("Time (in min)") + 
+  ylab("") +
+  theme_minimal() + 
+   theme(legend.position = "bottom", legend.justification = "center", legend.direction = "horizontal", legend.title = element_text(size = 16), 
+  legend.text = element_text(size = 16), 
+  plot.title = element_text(hjust = 0, face = "bold", size = 20),
+   axis.text = element_text(size = 16),
+        axis.title=element_text(size = 16),
+  strip.text.x = element_text(size = 16)) +
+   scale_fill_discrete(breaks = c("Noticing results", "Comparing with personal perspective", "Analyzing errors", "Constructing instructional implications", "Think-aloud duration")) 
+
+
+ggsave("Figure 3_Sequences of main steps per teacher_landscape.png", plot = last_plot(), device = "png", units = c("cm"), width = 80, height = 48, dpi = 300)
+
 
 ```
 
 ### Co-occurences of addressing different graph types (Appendix)
 
 ```{r}
-turndata_sensemaking%>%
+turndata_processing%>%
   mutate(noticing_analyzing = ifelse(code_noticing_results == 1 & code_analyzing_errors == 1 & code_disturbance == 0, 1, 0),
          noticing_comparing = ifelse(code_noticing_results == 1 & code_comparing_perspective == 1 & code_disturbance == 0, 1, 0),
          noticing_constructing = ifelse(code_noticing_results == 1 & code_constructing_implications == 1 & code_disturbance == 0, 1, 0), 
@@ -1147,14 +1071,14 @@ turndata_sensemaking%>%
 
 
 
-ggsave("Figure B.1_Co-occurences of sensemaking steps.png", plot = last_plot(), device = "png", units = c("cm"), width = 33, height = 20)
+ggsave("Figure B.1_Co-occurences of processing steps.png", plot = last_plot(), device = "png", units = c("cm"), width = 33, height = 20)
 
 ```
 
 ### Relative durations of addressing different graph types (Appendix)
 
 ```{r}
-eventdata_graphs <- read_excel("eventdata_graphs.xlsx")
+eventdata_graphs <- read_excel("data/eventdata_graphs.xlsx")
 ```
 
 Wrangling
@@ -1257,32 +1181,28 @@ data_aspects%>%
   add_row(pid = "Miranda")%>%
   add_row(pid = "James")%>%
   add_row(pid = "Bill")%>%
-  mutate_all(funs(ifelse(is.na(.), 0, .)))
+  mutate_all(funs(ifelse(is.na(.), 0, .))) # In consensus, no codes were coded for Tom, Miranda, James and Bill so rows with 0 are added here
 
 ```
-
-**Samuel: bei Tom, Miranda, Bill und James wurden keine aspects kodiert als Ergebnis des Konsens. Daher gibt es da keine aspects im Konsens und sie wurden an dieser Stelle händisch hinzugefügt.**.
 
 Wrangling relative durations data frame
 
 ```{r}
-sensemaking_duration_for_clustering <- 
-sensemaking_duration%>%
+processing_duration_for_clustering <- 
+processing_duration%>%
   pivot_wider(names_from = var, values_from = val)%>%
-  filter(pid != "Clarence")%>% 
+  filter(pid != "Clarence")%>% # excluded due to missing values
    mutate_at(c(2:5), funs(c(scale(.)))) # standardizing before clustering
   
 ```
 
-**Samuel: Clarence hier rausgefiltert vor join und dann Clustering, weil keine validen Konsense für noticing da sind.**
-
 ```{r}
 data_clustering <- 
-full_join(sensemaking_duration_for_clustering, data_aspects_for_clustering, by = "pid")%>%
+full_join(processing_duration_for_clustering, data_aspects_for_clustering, by = "pid")%>%
   select(-pid)
 ```
 
-Computing (dis)similarity matrix using gower metric
+#### Computing (dis)similarity matrix using Gower´s coefficient
 
 ```{r}
 diss_gower <- daisy(data_clustering, 
@@ -1291,7 +1211,7 @@ diss_gower <- daisy(data_clustering,
 
 ```
 
-Clustering using complete linkage algorithm
+#### Clustering using complete linkage algorithm
 
 ```{r}
 cluster_complete <- agnes(diss_gower, diss = FALSE, method = "complete")
@@ -1302,20 +1222,15 @@ plot(cluster_complete)
 
 cutree(cluster_complete, k = 3) # Partition 
 
-cutree(cluster_complete, k = 4)
 ```
 
 Computing heatmap for visualization clustering with complete linkage algorithm
-
-*Samuel: Das ist noch nicht angepasst. Der priorisierte Algorithmus ist average linkage und nicht complete; außerdem ist das mit der Heatmap sicher noch nicht die Endversion. Daher habe ich das vorerst gelassen und passe das noch an, wenn der Code für die Heatmap steht - aktuelle Version s. unten.*
-
-*Fürs Code ausführen hier: png inklusive bis inkl devoff() markieren und dann ausführen, sonst funktioniert export in png nicht.*
 
 ```{r}
 
 col_fun1 = colorRamp2(c(2, 0, -2), c("#55C667FF", "#FDE725FF", "#481567FF")) # color as function
 
-png("heatmap_gower_complete.png", width=1600, height=1000, bg = "transparent") 
+png("heatmap_gower_complete linkage.png", width=1600, height=1000, bg = "transparent") 
 
 h1 = Heatmap(data_clustering, name = "Legend", 
              col = col_fun1,
@@ -1329,7 +1244,7 @@ h1 = Heatmap(data_clustering, name = "Legend",
     column_dend_height = unit (35, "mm"), 
       column_names_side = "bottom",
        column_names_rot = 45, 
-      heatmap_legend_param = list(title = "legend test"))
+      heatmap_legend_param = list(title = ""))
 
 draw(h1, heatmap_legend_side = "bottom")
 
@@ -1338,7 +1253,7 @@ draw(h1, heatmap_legend_side = "bottom")
 
 ```
 
-Clustering using average linkage algorithm
+#### Clustering using average linkage algorithm
 
 ```{r}
 cluster_average <- agnes(diss_gower, diss = FALSE, method = "average")
@@ -1349,18 +1264,14 @@ plot(cluster_average) # Dendrogramm
 
 cutree(cluster_average, k = 3) # Partition
 
-cutree(cluster_average, k = 4) # Partition
-
-cutree(cluster_average, k = 3:5) # more than one Partition at once 
-
 ```
 
 Computing heatmap for visualization clustering with average linkage algorithm
 
 ```{r}
 
-col_fun2 = colorRamp2(c(2, 1, 0, -2), c("#35b779", "#addc30", "#f6f6f6", "#481567FF")) # color as function                         
-png("Figure 4_heatmap_gower_average_raw.png", width=1800, height=1200) 
+col_fun2 = colorRamp2(c(2, 1, 0, -2), c("#35b779", "#addc30", "#f6f6f6", "#481567FF"))                         
+png("Figure 4_Visualization clustering_heatmap_gower_average_raw.png", width=1800, height=1200) 
 
 h2 = Heatmap(data_clustering, name = "Legend", 
              col = col_fun2,
@@ -1388,55 +1299,27 @@ h2 = Heatmap(data_clustering, name = "Legend",
 draw(h2, heatmap_legend_side = "right")
 
  dev.off()
-
-
+ 
+ 
 ```
 
-### Comparing partitions of different algorithms for robust results
+#### Comparing partitions of different algorithms for robust results
 
-Comparing partitions: three group solutions of average and complete
-
-```{r}
-# average, 3 groups:  1 2 1 1 1 1 2 3 3 1 1 2 1 1 2 1 2 1 1 1 1 2 1 1 2 1 1 1 1 1 2 1 1 1 1 1 1 2 1 2 2 1 1 2 1 2 2
-# complete, 3 groups: 1 2 1 1 1 1 2 3 2 1 1 2 1 1 2 1 2 1 1 1 1 2 1 1 3 1 1 1 1 1 2 1 1 1 1 1 1 2 1 2 2 1 1 2 1 3 
-
-# copy and paste partitions for computing adjusted rand 
-adjustedRandIndex(new("Partition", 
-                      c(1, 2, 1, 1, 1, 1, 2, 3, 3, 1, 
-                        1, 2, 1, 1, 2, 1, 2, 1, 1, 1, 
-                        1, 2, 1, 1, 2, 1, 1, 1, 1, 1, 
-                        2, 1, 1, 1, 1, 1, 1, 2, 1, 2, 
-                        2, 1, 1, 2, 1, 2, 2)), # average, 3 groups
-                  new("Partition", 
-                      c(1, 2, 1, 1, 1, 1, 2, 3, 2, 1, 
-                        1, 2, 1, 1, 2, 1, 2, 1, 1, 1, 
-                        1, 2, 1, 1, 3, 1, 1, 1, 1, 1, 
-                        2, 1, 1, 1, 1, 1, 1, 2, 1, 2, 
-                        2, 1, 1, 2, 1, 3, 2))) # complete, 3 groups
-
-```
-
-Comparing partitions: four group solutions of average and complete
+Comparing partitions of three group-solution (group A, B, C in Figure 4 in the manuscript)
 
 ```{r}
-# average, 4 groups: 1 2 1 1 1 1 2 3 4 1 1 2 1 1 2 1 2 1 1 1 1 2 1 1 2 1 1 1 1 1 2 1 1 1 1 1 1 2 1 2 2 1 1 2 1 2 2
-
-# complete, 4 groups: 1 2 1 1 1 1 2 3 4 1 1 2 1 1 2 1 4 1 1 1 1 2 1 1 3 1 1 1 1 1 2 1 1 1 1 1 1 2 1 4 4 1 1 2 1 3 2
-
-# copy and paste partitions for computing adjusted rand 
 adjustedRandIndex(new("Partition", 
-                      c(1, 2, 1, 1, 1, 1, 2, 3, 4, 1, 
-                        1, 2, 1, 1, 2, 1, 2, 1, 1, 1, 
-                        1, 2, 1, 1, 2, 1, 1, 1, 1, 1, 
-                        2, 1, 1, 1, 1, 1, 1, 2, 1, 2, 
-                        2, 1, 1, 2, 1, 2, 2)), # average, 4 groups
+                      c(1, 3, 1, 1, 1, 1, 3, 4, 4, 1, 
+                        1, 3, 1, 2, 3, 2, 3, 1, 2, 1,
+                        2, 3, 1, 2, 3, 1, 1, 2, 2, 1, 
+                        3, 2, 2, 2, 2, 2, 1, 3, 1, 3, 
+                        3, 2, 1, 3, 1, 3, 3)), # average linkage, "outliers" according to the dendrogram are treated as a forth group 
                   new("Partition", 
-                      c(1, 2, 1, 1, 1, 1, 2, 3, 4, 1, 
-                        1, 2, 1, 1, 2, 1, 4, 1, 1, 1, 
-                        1, 2, 1, 1, 3, 1, 1, 1, 1, 1, 
-                        2, 1, 1, 1, 1, 1, 1, 2, 1, 4, 
-                        4, 1, 1, 2, 1, 3, 2))) # complete, 4 groups
-                  
+                      c(1, 3, 1, 1, 1, 1, 3, 3, 3, 1, 
+                        1, 3, 1, 2, 3, 2, 3, 1, 2, 1, 
+                        2, 3, 1, 2, 3, 1, 1, 2, 2, 1, 
+                        3, 2, 2, 2, 2, 2, 1, 3, 1, 3, 
+                        3, 2, 1, 3, 1, 3, 3))) # complete linkage
 ```
 
 ## Research Question 3: Main process (process mining)
@@ -1445,7 +1328,7 @@ adjustedRandIndex(new("Partition",
 
 ```{r}
 
-eventlog <- eventdata_sensemaking%>%
+eventlog <- eventdata_processing%>%
   filter(code %in% c("noticing_results", "comparing_perspective", "analyzing_errors", "constructing_implications"))%>%
   rename(complete = end)%>%
   convert_timestamps(columns = c("start", "complete"), format = ymd_hms)%>%
@@ -1457,8 +1340,6 @@ eventlog <- eventdata_sensemaking%>%
   to_eventlog()
   
 ```
-
-@Samuel**:** **die resource_id muss beim erstellen des eventlogs definiert werden, obwohl man sie nachher ja nicht mehr braucht in der Analyse. In den Codebeispielen im Package spielt sie auch nie eine Rolle, allerdings sieht man da eben auch nicht, wie die eventlogs erstellt werden. Wie damit umgehen?**
 
 ### Computing dependency matrix and visualization in dependency graph with low thresholds
 
@@ -1498,7 +1379,7 @@ Dependency matrix, 0.5 threshold
 
 ```{r}
 dep_matrix_05 <- dependency_matrix(eventlog, 
-                                  dependency_type =  dependency_type_fhm(threshold_dependency = 0.5, # dependency measure
+                                  dependency_type =  dependency_type_fhm(threshold_dependency = 0.5, 
                                   threshold_l1 = 0, # loop 1
                                   threshold_l2 = 0, # loop 2
                                   threshold_frequency = 0, # frequency
