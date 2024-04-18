@@ -10,7 +10,6 @@ format:
 theme:
   light: flatly
   dark: darkly
-editor: visual
 ---
 
 ```{r}
@@ -109,7 +108,8 @@ Wrangling: from event to turn data
 
 ```{r}
 codings_turn_run1 <- codings_event_run1%>%
-      mutate(time = map2(start, end, seq, by = "1 sec"))%>%
+  # @Sarah: Das finde ich bis heute einen echt krassen Hack
+  mutate(time = map2(start, end, seq, by = "1 sec"))%>%
   unnest(cols = time)%>%
   select(-start, -end, -turnID)%>%
   group_by(time, pid, coder)%>%
@@ -801,55 +801,91 @@ Visualizing relative durations of main steps for each teacher
 
 ```{r}
 
-processing_duration%>%
-  ggplot(
-    aes(x = factor(var, level = c("constructing_implications_duration", "analyzing_errors_duration", "comparing_perspective_duration", "noticing_results_duration")), 
-    y = val, fill = var)) + 
-  stat_halfeye(adjust = 0.5, 
-                       width = 0.5, 
-                       .width = 0, 
-                       alpha =0.5,
-                       justification = -.3, 
-                       point_colour = NA,
-                       show.legend = FALSE) + 
-  geom_boxplot(aes(fill = var), 
-                 show.legend = FALSE,
-                 alpha = 0.2, 
-                 outlier.shape = NA,
-                 width = 0.18) + 
-    scale_fill_manual(values = 
-                         c("noticing_results_duration" = "#481f70",
-                           "comparing_perspective_duration" ="#30688e",
-                           "analyzing_errors_duration"= "#20a486", 
-                           "constructing_implications_duration" = "#8fd744")) +
-  geom_half_point(aes(color = var), 
-                            show.legend = FALSE,
-                            side = "l", 
-                            range_scale = 0.3, 
-                            width = 1,
-                            alpha = 1,
-                            size = 0.5) +
-    scale_color_manual(values = 
-                         c("noticing_results_duration" = "#481f70",
-                           "comparing_perspective_duration" ="#30688e",
-                           "analyzing_errors_duration"= "#20a486", 
-                           "constructing_implications_duration" = "#8fd744")) +
+
+processing_duration %>%
+  ggplot(aes(
+    x = factor(
+      var,
+      level = c(
+        "constructing_implications_duration",
+        "analyzing_errors_duration",
+        "comparing_perspective_duration",
+        "noticing_results_duration"
+      )
+    ),
+    y = val,
+    fill = var
+  )) +
+  stat_halfeye(
+    adjust = 0.5,
+    width = 0.5,
+    .width = 0,
+    alpha = 0.5,
+    justification = -.3,
+    point_colour = NA,
+    show.legend = FALSE
+  ) +
+  geom_boxplot(
+    aes(fill = var),
+    show.legend = FALSE,
+    alpha = 0.2,
+    outlier.shape = NA,
+    width = 0.18
+  ) +
+  scale_fill_manual(
+    values =
+      c(
+        "noticing_results_duration" = "#481f70",
+        "comparing_perspective_duration" = "#30688e",
+        "analyzing_errors_duration" = "#20a486",
+        "constructing_implications_duration" = "#8fd744"
+      )
+  ) +
+  geom_half_point(
+    aes(color = var),
+    show.legend = FALSE,
+    side = "l",
+    range_scale = 0.3,
+    width = 1,
+    alpha = 1,
+    size = 0.5
+  ) +
+  scale_color_manual(
+    values =
+      c(
+        "noticing_results_duration" = "#481f70",
+        "comparing_perspective_duration" = "#30688e",
+        "analyzing_errors_duration" = "#20a486",
+        "constructing_implications_duration" = "#8fd744"
+      )
+  ) +
   coord_flip() +
   ggtitle("") +
-    theme_minimal() + 
-    theme(axis.title.x = element_text(size = 17),
-          axis.text.x = element_text(size = 15),
-          axis.text.y = element_text(size = 17),
-          legend.position = "none") + 
-     scale_x_discrete(labels = c("Constructing\ninstructional\n implications",
-                                 "Analyzing\nerrors", 
-                                 "Comparing\nwith\npersonal\nperspective",
-                                "Noticing\nresults"
-                                )) +
-    xlab("") + 
-    ylab("Relative durations of main steps, in %") 
+  theme_minimal() +
+  theme(
+    axis.title.x = element_text(size = 17),
+    axis.text.x = element_text(size = 15),
+    axis.text.y = element_text(size = 17),
+    legend.position = "none"
+  ) +
+  scale_x_discrete(
+    labels = c(
+      "Constructing\ninstructional\n implications",
+      "Analyzing\nerrors",
+      "Comparing\nwith\npersonal\nperspective",
+      "Noticing\nresults"
+    )
+  ) +
+  xlab("") +
+  ylab("Relative durations of main steps, in %")
 
-ggsave("Figure 1_Relative durations of main steps.png", plot = last_plot(), device = "png", width = 10, height = 7)
+ggsave(
+  "Figure 1_Relative durations of main steps.png",
+  plot = last_plot(),
+  device = "png",
+  width = 10,
+  height = 7
+)
 
 
 ```
@@ -921,100 +957,268 @@ eventdata_processing%>%
 Visualization
 
 ```{r}
-  ggplot(eventdata_processing_sequences, aes(y = code_ungrouped)) + 
-  geom_segment(data = eventdata_processing_sequences %>%
-                 filter(code_ungrouped == "Think-aloud duration")%>%
-                 mutate("Think-aloud duration" = code_legend),
-               aes(x = start_p, xend = end_p, yend = code_ungrouped, color = "Think-aloud duration"), lineend = "butt", linewidth = 4) +
-  geom_segment(data = eventdata_processing_sequences %>%
-                 filter(code_ungrouped == "Noticing results")%>%
-                 mutate("Noticing results" = code_legend),
-               aes(x = start_p, xend = end_p, yend = code_ungrouped, color = "Noticing results"), lineend = "butt", linewidth = 4) +
-  geom_segment(data = eventdata_processing_sequences %>%
-               filter(code_ungrouped == "Comparing with personal perspective")%>%
-               mutate("Comparing with personal perspective" = code_legend),
-             aes(x = start_p, xend = end_p, yend = code_ungrouped, color = "Comparing with personal perspective"), lineend = "butt", linewidth = 4) +
-  geom_segment(data = eventdata_processing_sequences %>%
-               filter(code_ungrouped == "Analyzing errors")%>%
-               mutate("Analyzing errors" = code_legend),
-             aes(x = start_p, xend = end_p, yend = code_ungrouped, color = "Analyzing errors"), lineend = "butt", linewidth = 4) +
-  geom_segment(data = eventdata_processing_sequences %>%
-               filter(code_ungrouped == "Constructing instructional implications")%>%
-               mutate("Constructing instructional implications" = code_legend),
-             aes(x = start_p, xend = end_p, yend = code_ungrouped, color = "Constructing instructional implications"), lineend = "butt", linewidth = 4) +
-  guides(color=guide_legend(title="Main steps")) + 
- facet_wrap(~`pid`, ncol = 3) + 
-  scale_colour_manual(values = c("Noticing results" = "#481f70",
-                                 "Comparing with personal perspective" = "#30688e",
-                                 "Analyzing errors" = "#20a486",
-                                 "Constructing instructional implications" = "#8fd744",
-                                 "Think-aloud duration" = "darkgrey"),
-                      breaks = c("Noticing results", "Comparing with personal perspective", "Analyzing errors", "Constructing instructional implications", "Think-aloud duration")) + 
-  labs(title = "") + 
-  scale_y_discrete(limits = c("Think-aloud duration", "Constructing instructional implications", "Analyzing errors", "Comparing with personal perspective", "Noticing results")) +
-  xlab("Time (in min)") + 
+ggplot(eventdata_processing_sequences, aes(y = code_ungrouped)) +
+  geom_segment(
+    data = eventdata_processing_sequences %>%
+      filter(code_ungrouped == "Think-aloud duration") %>%
+      mutate("Think-aloud duration" = code_legend),
+    aes(
+      x = start_p,
+      xend = end_p,
+      yend = code_ungrouped,
+      color = "Think-aloud duration"
+    ),
+    lineend = "butt",
+    linewidth = 4
+  ) +
+  geom_segment(
+    data = eventdata_processing_sequences %>%
+      filter(code_ungrouped == "Noticing results") %>%
+      mutate("Noticing results" = code_legend),
+    aes(
+      x = start_p,
+      xend = end_p,
+      yend = code_ungrouped,
+      color = "Noticing results"
+    ),
+    lineend = "butt",
+    linewidth = 4
+  ) +
+  geom_segment(
+    data = eventdata_processing_sequences %>%
+      filter(code_ungrouped == "Comparing with personal perspective") %>%
+      mutate("Comparing with personal perspective" = code_legend),
+    aes(
+      x = start_p,
+      xend = end_p,
+      yend = code_ungrouped,
+      color = "Comparing with personal perspective"
+    ),
+    lineend = "butt",
+    linewidth = 4
+  ) +
+  geom_segment(
+    data = eventdata_processing_sequences %>%
+      filter(code_ungrouped == "Analyzing errors") %>%
+      mutate("Analyzing errors" = code_legend),
+    aes(
+      x = start_p,
+      xend = end_p,
+      yend = code_ungrouped,
+      color = "Analyzing errors"
+    ),
+    lineend = "butt",
+    linewidth = 4
+  ) +
+  geom_segment(
+    data = eventdata_processing_sequences %>%
+      filter(code_ungrouped == "Constructing instructional implications") %>%
+      mutate("Constructing instructional implications" = code_legend),
+    aes(
+      x = start_p,
+      xend = end_p,
+      yend = code_ungrouped,
+      color = "Constructing instructional implications"
+    ),
+    lineend = "butt",
+    linewidth = 4
+  ) +
+  guides(color = guide_legend(title = "Main steps")) +
+  facet_wrap( ~ `pid`, ncol = 3) +
+  scale_colour_manual(
+    values = c(
+      "Noticing results" = "#481f70",
+      "Comparing with personal perspective" = "#30688e",
+      "Analyzing errors" = "#20a486",
+      "Constructing instructional implications" = "#8fd744",
+      "Think-aloud duration" = "darkgrey"
+    ),
+    breaks = c(
+      "Noticing results",
+      "Comparing with personal perspective",
+      "Analyzing errors",
+      "Constructing instructional implications",
+      "Think-aloud duration"
+    )
+  ) +
+  labs(title = "") +
+  scale_y_discrete(
+    limits = c(
+      "Think-aloud duration",
+      "Constructing instructional implications",
+      "Analyzing errors",
+      "Comparing with personal perspective",
+      "Noticing results"
+    )
+  ) +
+  xlab("Time (in min)") +
   ylab("") +
-  theme_minimal() + 
-   theme(legend.position = "bottom", legend.justification = "center", legend.direction = "horizontal", legend.title = element_text(size = 10), 
-  legend.text = element_text(size = 10),
-  plot.title = element_text(hjust = 0, face = "bold", size = 20),
-   axis.text = element_text(size = 10),
-        axis.title=element_text(size = 10),
-  strip.text.x = element_text(size = 10)) +
-   scale_fill_discrete(breaks = c("Noticing results", "Comparing with personal perspective", "Analyzing errors", "Constructing instructional implications", "Think-aloud duration")) 
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    legend.justification = "center",
+    legend.direction = "horizontal",
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 10),
+    plot.title = element_text(hjust = 0, face = "bold", size = 20),
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 10),
+    strip.text.x = element_text(size = 10)
+  ) +
+  scale_fill_discrete(
+    breaks = c(
+      "Noticing results",
+      "Comparing with personal perspective",
+      "Analyzing errors",
+      "Constructing instructional implications",
+      "Think-aloud duration"
+    )
+  )
 
 
-ggsave("Figure 3_Sequences of main steps per teacher_portrait.png", plot = last_plot(), device = "png", units = c("cm"), width = 34, height = 48, dpi = 300)
+ggsave(
+  "Figure 3_Sequences of main steps per teacher_portrait.png",
+  plot = last_plot(),
+  device = "png",
+  units = c("cm"),
+  width = 34,
+  height = 48,
+  dpi = 300
+)
 
 ```
 
 Landscape
 
 ```{r}
-  ggplot(eventdata_processing_sequences, aes(y = code_ungrouped)) + 
-  geom_segment(data = eventdata_processing_sequences %>%
-                 filter(code_ungrouped == "Think-aloud duration")%>%
-                 mutate("Think-aloud duration" = code_legend),
-               aes(x = start_p, xend = end_p, yend = code_ungrouped, color = "Think-aloud duration"), lineend = "butt", linewidth = 4) +
-  geom_segment(data = eventdata_processing_sequences %>%
-                 filter(code_ungrouped == "Noticing results")%>%
-                 mutate("Noticing results" = code_legend),
-               aes(x = start_p, xend = end_p, yend = code_ungrouped, color = "Noticing results"), lineend = "butt", linewidth = 4) +
-  geom_segment(data = eventdata_processing_sequences %>%
-               filter(code_ungrouped == "Comparing with personal perspective")%>%
-               mutate("Comparing with personal perspective" = code_legend),
-             aes(x = start_p, xend = end_p, yend = code_ungrouped, color = "Comparing with personal perspective"), lineend = "butt", linewidth = 4) +
-  geom_segment(data = eventdata_processing_sequences %>%
-               filter(code_ungrouped == "Analyzing errors")%>%
-               mutate("Analyzing errors" = code_legend),
-             aes(x = start_p, xend = end_p, yend = code_ungrouped, color = "Analyzing errors"), lineend = "butt", linewidth = 4) +
-  geom_segment(data = eventdata_processing_sequences %>%
-               filter(code_ungrouped == "Constructing instructional implications")%>%
-               mutate("Constructing instructional implications" = code_legend),
-             aes(x = start_p, xend = end_p, yend = code_ungrouped, color = "Constructing instructional implications"), lineend = "butt", linewidth = 4) +
-  guides(color=guide_legend(title="Main steps")) + 
- facet_wrap(~`pid`, ncol = 4) + 
-  scale_colour_manual(values = c("Noticing results" = "#481f70",
-                                 "Comparing with personal perspective" = "#30688e",
-                                 "Analyzing errors" = "#20a486",
-                                 "Constructing instructional implications" = "#8fd744",
-                                 "Think-aloud duration" = "darkgrey"),
-                      breaks = c("Noticing results", "Comparing with personal perspective", "Analyzing errors", "Constructing instructional implications", "Think-aloud duration")) + 
-  labs(title = "") + 
-  scale_y_discrete(limits = c("Think-aloud duration", "Constructing instructional implications", "Analyzing errors", "Comparing with personal perspective", "Noticing results")) +
-  xlab("Time (in min)") + 
+ggplot(eventdata_processing_sequences, aes(y = code_ungrouped)) +
+  geom_segment(
+    data = eventdata_processing_sequences %>%
+      filter(code_ungrouped == "Think-aloud duration") %>%
+      mutate("Think-aloud duration" = code_legend),
+    aes(
+      x = start_p,
+      xend = end_p,
+      yend = code_ungrouped,
+      color = "Think-aloud duration"
+    ),
+    lineend = "butt",
+    linewidth = 4
+  ) +
+  geom_segment(
+    data = eventdata_processing_sequences %>%
+      filter(code_ungrouped == "Noticing results") %>%
+      mutate("Noticing results" = code_legend),
+    aes(
+      x = start_p,
+      xend = end_p,
+      yend = code_ungrouped,
+      color = "Noticing results"
+    ),
+    lineend = "butt",
+    linewidth = 4
+  ) +
+  geom_segment(
+    data = eventdata_processing_sequences %>%
+      filter(code_ungrouped == "Comparing with personal perspective") %>%
+      mutate("Comparing with personal perspective" = code_legend),
+    aes(
+      x = start_p,
+      xend = end_p,
+      yend = code_ungrouped,
+      color = "Comparing with personal perspective"
+    ),
+    lineend = "butt",
+    linewidth = 4
+  ) +
+  geom_segment(
+    data = eventdata_processing_sequences %>%
+      filter(code_ungrouped == "Analyzing errors") %>%
+      mutate("Analyzing errors" = code_legend),
+    aes(
+      x = start_p,
+      xend = end_p,
+      yend = code_ungrouped,
+      color = "Analyzing errors"
+    ),
+    lineend = "butt",
+    linewidth = 4
+  ) +
+  geom_segment(
+    data = eventdata_processing_sequences %>%
+      filter(code_ungrouped == "Constructing instructional implications") %>%
+      mutate("Constructing instructional implications" = code_legend),
+    aes(
+      x = start_p,
+      xend = end_p,
+      yend = code_ungrouped,
+      color = "Constructing instructional implications"
+    ),
+    lineend = "butt",
+    linewidth = 4
+  ) +
+  guides(color = guide_legend(title = "Main steps")) +
+  facet_wrap( ~ `pid`, ncol = 4) +
+  scale_colour_manual(
+    values = c(
+      "Noticing results" = "#481f70",
+      "Comparing with personal perspective" = "#30688e",
+      "Analyzing errors" = "#20a486",
+      "Constructing instructional implications" = "#8fd744",
+      "Think-aloud duration" = "darkgrey"
+    ),
+    breaks = c(
+      "Noticing results",
+      "Comparing with personal perspective",
+      "Analyzing errors",
+      "Constructing instructional implications",
+      "Think-aloud duration"
+    )
+  ) +
+  labs(title = "") +
+  scale_y_discrete(
+    limits = c(
+      "Think-aloud duration",
+      "Constructing instructional implications",
+      "Analyzing errors",
+      "Comparing with personal perspective",
+      "Noticing results"
+    )
+  ) +
+  xlab("Time (in min)") +
   ylab("") +
-  theme_minimal() + 
-   theme(legend.position = "bottom", legend.justification = "center", legend.direction = "horizontal", legend.title = element_text(size = 16), 
-  legend.text = element_text(size = 16), 
-  plot.title = element_text(hjust = 0, face = "bold", size = 20),
-   axis.text = element_text(size = 16),
-        axis.title=element_text(size = 16),
-  strip.text.x = element_text(size = 16)) +
-   scale_fill_discrete(breaks = c("Noticing results", "Comparing with personal perspective", "Analyzing errors", "Constructing instructional implications", "Think-aloud duration")) 
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    legend.justification = "center",
+    legend.direction = "horizontal",
+    legend.title = element_text(size = 16),
+    legend.text = element_text(size = 16),
+    plot.title = element_text(hjust = 0, face = "bold", size = 20),
+    axis.text = element_text(size = 16),
+    axis.title = element_text(size = 16),
+    strip.text.x = element_text(size = 16)
+  ) +
+  scale_fill_discrete(
+    breaks = c(
+      "Noticing results",
+      "Comparing with personal perspective",
+      "Analyzing errors",
+      "Constructing instructional implications",
+      "Think-aloud duration"
+    )
+  )
 
 
-ggsave("Figure 3_Sequences of main steps per teacher_landscape.png", plot = last_plot(), device = "png", units = c("cm"), width = 80, height = 48, dpi = 300)
+ggsave(
+  "Figure 3_Sequences of main steps per teacher_landscape.png",
+  plot = last_plot(),
+  device = "png",
+  units = c("cm"),
+  width = 80,
+  height = 48,
+  dpi = 300
+)
 
 
 ```
@@ -1022,52 +1226,113 @@ ggsave("Figure 3_Sequences of main steps per teacher_landscape.png", plot = last
 ### Co-occurences of addressing different graph types (Appendix)
 
 ```{r}
-turndata_processing%>%
-  mutate(noticing_analyzing = ifelse(code_noticing_results == 1 & code_analyzing_errors == 1 & code_disturbance == 0, 1, 0),
-         noticing_comparing = ifelse(code_noticing_results == 1 & code_comparing_perspective == 1 & code_disturbance == 0, 1, 0),
-         noticing_constructing = ifelse(code_noticing_results == 1 & code_constructing_implications == 1 & code_disturbance == 0, 1, 0), 
-         analyzing_comparing = ifelse(code_analyzing_errors == 1 & code_comparing_perspective == 1 & code_disturbance == 0, 1, 0),
-         analyzing_constructing = ifelse(code_analyzing_errors == 1 & code_constructing_implications == 1 & code_disturbance == 0, 1, 0),
-         comparing_constructing = ifelse(code_comparing_perspective == 1 & code_constructing_implications == 1 & code_disturbance == 0, 1, 0),
-         think_aloud_clean = ifelse(code_think_aloud == 1 & code_disturbance == 0, 1, 0))%>%
-  group_by(pid)%>%
-  summarize(think_aloud_duration = sum(think_aloud_clean), 
-            noticing_analyzing_duration = sum(noticing_analyzing)/think_aloud_duration*100,
-            noticing_comparing_duration = sum(noticing_comparing)/think_aloud_duration*100,
-            noticing_constructing_duration = sum(noticing_constructing)/think_aloud_duration*100,
-            analyzing_comparing_duration = sum(analyzing_comparing)/think_aloud_duration*100,
-            analyzing_constructing_duration = sum(analyzing_constructing)/think_aloud_duration*100,
-            comparing_constructing_duration = sum(comparing_constructing)/think_aloud_duration*100)%>%
-    select(-think_aloud_duration)%>%
-    pivot_longer(., names_to = "var", values_to = "val", - pid)%>%
-  ungroup()%>%
-  mutate_at(vars(val), funs(round(., 1)))%>%
-   ggplot(
-     aes(x = factor(var, level = c("noticing_analyzing_duration", "noticing_comparing_duration", "noticing_constructing_duration", "analyzing_comparing_duration", "analyzing_constructing_duration", "comparing_constructing_duration")), y = val)) + 
-    geom_boxplot(show.legend = FALSE,
-                 alpha = 0.2, 
-                 outlier.shape = NA,
-                 width = 0.25) + 
-  geom_half_point(show.legend = FALSE,
-                            side = "l",
-                            range_scale = 0.3, 
-                            width = 1,
-                            alpha = 1,
-                            size = 0.5,
-                            shape = 1) +
-    coord_cartesian(ylim = c(0, 35)) + 
-  coord_flip() + 
-    theme_minimal() + 
-    scale_x_discrete(labels = c("Noticing results/\nAnalyzing errors", 
-                                "Noticing results/\nComparing with personal perspective", 
-                                "Noticing results/\nconstructing instructional implications", 
-                                "Analyzing errors/\nComparing with personal perspective", 
-                                "Analyzing errors/\n Constructing instructional implications", 
-                                "Comparing with personal perspective/\nconstructing instructional implications")) +  
-      labs(title = "", x = "", y = "Percentage") + 
-    theme(axis.text.y = element_text(size = 15), 
-          axis.text.x = element_text(size = 15), 
-          title = element_text(size = 15)) 
+turndata_processing %>%
+  mutate(
+    noticing_analyzing = ifelse(
+      code_noticing_results == 1 &
+        code_analyzing_errors == 1 & code_disturbance == 0,
+      1,
+      0
+    ),
+    noticing_comparing = ifelse(
+      code_noticing_results == 1 &
+        code_comparing_perspective == 1 & code_disturbance == 0,
+      1,
+      0
+    ),
+    noticing_constructing = ifelse(
+      code_noticing_results == 1 &
+        code_constructing_implications == 1 &
+        code_disturbance == 0,
+      1,
+      0
+    ),
+    analyzing_comparing = ifelse(
+      code_analyzing_errors == 1 &
+        code_comparing_perspective == 1 & code_disturbance == 0,
+      1,
+      0
+    ),
+    analyzing_constructing = ifelse(
+      code_analyzing_errors == 1 &
+        code_constructing_implications == 1 & code_disturbance == 0,
+      1,
+      0
+    ),
+    comparing_constructing = ifelse(
+      code_comparing_perspective == 1 &
+        code_constructing_implications == 1 & code_disturbance == 0,
+      1,
+      0
+    ),
+    think_aloud_clean = ifelse(code_think_aloud == 1 &
+                                 code_disturbance == 0, 1, 0)
+  ) %>%
+  group_by(pid) %>%
+  summarize(
+    think_aloud_duration = sum(think_aloud_clean),
+    noticing_analyzing_duration = sum(noticing_analyzing) / think_aloud_duration *
+      100,
+    noticing_comparing_duration = sum(noticing_comparing) / think_aloud_duration *
+      100,
+    noticing_constructing_duration = sum(noticing_constructing) /
+      think_aloud_duration * 100,
+    analyzing_comparing_duration = sum(analyzing_comparing) / think_aloud_duration *
+      100,
+    analyzing_constructing_duration = sum(analyzing_constructing) /
+      think_aloud_duration * 100,
+    comparing_constructing_duration = sum(comparing_constructing) /
+      think_aloud_duration * 100
+  ) %>%
+  select(-think_aloud_duration) %>%
+  pivot_longer(., names_to = "var", values_to = "val",-pid) %>%
+  ungroup() %>%
+  mutate_at(vars(val), funs(round(., 1))) %>%
+  ggplot(aes(x = factor(
+    var,
+    level = c(
+      "noticing_analyzing_duration",
+      "noticing_comparing_duration",
+      "noticing_constructing_duration",
+      "analyzing_comparing_duration",
+      "analyzing_constructing_duration",
+      "comparing_constructing_duration"
+    )
+  ), y = val)) +
+  geom_boxplot(
+    show.legend = FALSE,
+    alpha = 0.2,
+    outlier.shape = NA,
+    width = 0.25
+  ) +
+  geom_half_point(
+    show.legend = FALSE,
+    side = "l",
+    range_scale = 0.3,
+    width = 1,
+    alpha = 1,
+    size = 0.5,
+    shape = 1
+  ) +
+  coord_cartesian(ylim = c(0, 35)) +
+  coord_flip() +
+  theme_minimal() +
+  scale_x_discrete(
+    labels = c(
+      "Noticing results/\nAnalyzing errors",
+      "Noticing results/\nComparing with personal perspective",
+      "Noticing results/\nconstructing instructional implications",
+      "Analyzing errors/\nComparing with personal perspective",
+      "Analyzing errors/\n Constructing instructional implications",
+      "Comparing with personal perspective/\nconstructing instructional implications"
+    )
+  ) +
+  labs(title = "", x = "", y = "Percentage") +
+  theme(
+    axis.text.y = element_text(size = 15),
+    axis.text.x = element_text(size = 15),
+    title = element_text(size = 15)
+  ) 
 
 
 
@@ -1232,19 +1497,22 @@ col_fun1 = colorRamp2(c(2, 0, -2), c("#55C667FF", "#FDE725FF", "#481567FF")) # c
 
 png("heatmap_gower_complete linkage.png", width=1600, height=1000, bg = "transparent") 
 
-h1 = Heatmap(data_clustering, name = "Legend", 
-             col = col_fun1,
-        cluster_rows = agnes(diss_gower, diss = FALSE, method = "complete"), 
-   column_title = "", 
-  show_column_dend = TRUE, 
-   row_names_gp = gpar(fontsize = 18), 
-    column_names_gp = gpar(fontsize = 18),
-   width = (unit(25, "cm")), 
-       row_dend_width = unit (85, "mm"), 
-    column_dend_height = unit (35, "mm"), 
-      column_names_side = "bottom",
-       column_names_rot = 45, 
-      heatmap_legend_param = list(title = ""))
+h1 = Heatmap(
+  data_clustering,
+  name = "Legend",
+  col = col_fun1,
+  cluster_rows = agnes(diss_gower, diss = FALSE, method = "complete"),
+  column_title = "",
+  show_column_dend = TRUE,
+  row_names_gp = gpar(fontsize = 18),
+  column_names_gp = gpar(fontsize = 18),
+  width = (unit(25, "cm")),
+  row_dend_width = unit (85, "mm"),
+  column_dend_height = unit (35, "mm"),
+  column_names_side = "bottom",
+  column_names_rot = 45,
+  heatmap_legend_param = list(title = "")
+)
 
 draw(h1, heatmap_legend_side = "bottom")
 
@@ -1273,27 +1541,59 @@ Computing heatmap for visualization clustering with average linkage algorithm
 col_fun2 = colorRamp2(c(2, 1, 0, -2), c("#35b779", "#addc30", "#f6f6f6", "#481567FF"))                         
 png("Figure 4_Visualization clustering_heatmap_gower_average_raw.png", width=1800, height=1200) 
 
-h2 = Heatmap(data_clustering, name = "Legend", 
-             col = col_fun2,
-        cluster_rows = agnes(diss_gower, diss = FALSE, method = "average"), 
-   column_title = "", 
-  show_column_dend = TRUE, 
+
+h2 = Heatmap(
+  data_clustering,
+  name = "Legend",
+  col = col_fun2,
+  cluster_rows = agnes(diss_gower, diss = FALSE, method = "average"),
+  column_title = "",
+  show_column_dend = TRUE,
   show_column_names = FALSE,
-   row_names_gp = gpar(fontsize = 18), 
-    column_names_gp = gpar(fontsize = 18),
-   width = (unit(25, "cm")), 
-       row_dend_width = unit (85, "mm"), 
-    column_dend_height = unit (35, "mm"), 
-      column_names_side = "bottom",
-       column_names_rot = 45, 
-      heatmap_legend_param = list(title = "", 
-                                  at = c(-2, 0, 1, 2), 
-                                  labels = c("low duration of main step", "aspect is not noticed", "aspect is noticed", "high duration of main step"), 
-                                  labels_gp = gpar(fontsize = 18), 
-                                  direction = c("vertical"), 
-                                  labels_rot = 45), 
-  bottom_annotation = columnAnnotation(var = anno_text(c("Noticing", "Comparing", "Analyzing", "Constructing", "Middle group", "Result - name", "Weakest group", "Assessm. finished", "Best group", "Mean", 
-      "Result student", "Outlier", "Weakest student", "Disperson (gen.)", "Range", "Best student", "Disperson (mean)"), gp = gpar(fontsize = 20), rot = 50)))
+  row_names_gp = gpar(fontsize = 18),
+  column_names_gp = gpar(fontsize = 18),
+  width = (unit(25, "cm")),
+  row_dend_width = unit (85, "mm"),
+  column_dend_height = unit (35, "mm"),
+  column_names_side = "bottom",
+  column_names_rot = 45,
+  heatmap_legend_param = list(
+    title = "",
+    at = c(-2, 0, 1, 2),
+    labels = c(
+      "low duration of main step",
+      "aspect is not noticed",
+      "aspect is noticed",
+      "high duration of main step"
+    ),
+    labels_gp = gpar(fontsize = 18),
+    direction = c("vertical"),
+    labels_rot = 45
+  ),
+  bottom_annotation = columnAnnotation(var = anno_text(
+    c(
+      "Noticing",
+      "Comparing",
+      "Analyzing",
+      "Constructing",
+      "Middle group",
+      "Result - name",
+      "Weakest group",
+      "Assessm. finished",
+      "Best group",
+      "Mean",
+      "Result student",
+      "Outlier",
+      "Weakest student",
+      "Disperson (gen.)",
+      "Range",
+      "Best student",
+      "Disperson (mean)"
+    ),
+    gp = gpar(fontsize = 20),
+    rot = 50
+  ))
+)
 
 
 draw(h2, heatmap_legend_side = "right")
@@ -1328,9 +1628,12 @@ adjustedRandIndex(new("Partition",
 
 ```{r}
 
-eventlog <- eventdata_processing%>%
+eventlog <- 
+  eventdata_processing%>%
   filter(code %in% c("noticing_results", "comparing_perspective", "analyzing_errors", "constructing_implications"))%>%
   rename(complete = end)%>%
+  # @Sarah: Hier fliegen zwei Turns raus, weil deren Datetime nicht korrekt formatiert ist:
+  # Es sind TurnID 1226 und 1600
   convert_timestamps(columns = c("start", "complete"), format = ymd_hms)%>%
   mutate(dummy = as.character("a"))%>% 
   activitylog(case_id = "pid",
@@ -1346,13 +1649,22 @@ eventlog <- eventdata_processing%>%
 Dependency matrix
 
 ```{r}
-dep_matrix <- dependency_matrix(eventlog, 
-                                  dependency_type =  dependency_type_fhm(threshold_dependency = 0, # dependency measure
-                                  threshold_l1 = 0, # loop 1
-                                  threshold_l2 = 0, # loop 2
-                                  threshold_frequency = 0, # frequency
-                                  all_connected = TRUE, # T = connecting best antecedent and consequent regardless of threshold
-                                  endpoints_connected = TRUE)) # T = connecting start/end activity as antecedent/consequent even when according to threshold it would not be connected
+dep_matrix <- dependency_matrix(
+  eventlog,
+  dependency_type =  dependency_type_fhm(
+    threshold_dependency = 0,
+    # dependency measure
+    threshold_l1 = 0,
+    # loop 1
+    threshold_l2 = 0,
+    # loop 2
+    threshold_frequency = 0,
+    # frequency
+    all_connected = TRUE,
+    # T = connecting best antecedent and consequent regardless of threshold
+    endpoints_connected = TRUE
+  )
+) # T = connecting start/end activity as antecedent/consequent even when according to threshold it would not be connected
 
 print(dep_matrix)
 
@@ -1378,13 +1690,21 @@ render_causal_net(render = TRUE)
 Dependency matrix, 0.5 threshold
 
 ```{r}
-dep_matrix_05 <- dependency_matrix(eventlog, 
-                                  dependency_type =  dependency_type_fhm(threshold_dependency = 0.5, 
-                                  threshold_l1 = 0, # loop 1
-                                  threshold_l2 = 0, # loop 2
-                                  threshold_frequency = 0, # frequency
-                                  all_connected = TRUE, # T = connecting best antecedent and consequent regardless of threshold
-                                  endpoints_connected = TRUE)) # T = connecting start/end activity as antecedent/consequent even when according to threshold it would not be connected
+dep_matrix_05 <- dependency_matrix(
+  eventlog,
+  dependency_type =  dependency_type_fhm(
+    threshold_dependency = 0.5,
+    threshold_l1 = 0,
+    # loop 1
+    threshold_l2 = 0,
+    # loop 2
+    threshold_frequency = 0,
+    # frequency
+    all_connected = TRUE,
+    # T = connecting best antecedent and consequent regardless of threshold
+    endpoints_connected = TRUE
+  )
+) # T = connecting start/end activity as antecedent/consequent even when according to threshold it would not be connected
 
 print(dep_matrix_05)
 
@@ -1407,13 +1727,22 @@ render_causal_net(render = TRUE)
 Dependency matrix, default
 
 ```{r}
-dep_matrix_default <- dependency_matrix(eventlog, 
-                                  dependency_type =  dependency_type_fhm(threshold_dependency = 0.9, # dependency measure default
-                                  threshold_l1 = 0, # loop 1
-                                  threshold_l2 = 0, # loop 2
-                                  threshold_frequency = 0, # frequency
-                                  all_connected = TRUE, # T = connecting best antecedent and consequent regardless of threshold
-                                  endpoints_connected = TRUE)) # T = connecting start/end activity as antecedent/consequent even when according to threshold it would not be connected
+dep_matrix_default <- dependency_matrix(
+  eventlog,
+  dependency_type =  dependency_type_fhm(
+    threshold_dependency = 0.9,
+    # dependency measure default
+    threshold_l1 = 0,
+    # loop 1
+    threshold_l2 = 0,
+    # loop 2
+    threshold_frequency = 0,
+    # frequency
+    all_connected = TRUE,
+    # T = connecting best antecedent and consequent regardless of threshold
+    endpoints_connected = TRUE
+  )
+) # T = connecting start/end activity as antecedent/consequent even when according to threshold it would not be connected
 
 print(dep_matrix_default)
 
